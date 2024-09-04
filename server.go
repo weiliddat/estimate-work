@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -28,10 +30,13 @@ type User struct {
 }
 
 type Room struct {
-	Id    string
-	Name  string
-	Host  User
-	Users []User
+	mu        sync.Mutex
+	Id        string
+	Name      string
+	Host      User
+	Users     []User
+	UpdatedAt time.Time
+	Subs      [](chan bool)
 }
 
 var users = make(map[string]*User)
@@ -46,11 +51,11 @@ func index(w http.ResponseWriter, r *http.Request) {
 		w,
 		"base",
 		struct {
-			User User
-			Room Room
+			User *User
+			Room *Room
 		}{
-			User: *user,
-			Room: *prevRoom,
+			User: user,
+			Room: prevRoom,
 		},
 	)
 	if err != nil {
@@ -109,97 +114,6 @@ func createUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func joinRoom(w http.ResponseWriter, r *http.Request) {
-	roomName := r.PathValue("room")
-
-	room, exists := rooms[roomName]
-
-	if !exists {
-		NotFoundHandler(w, r, "room")
-		return
-	}
-
-	user := getUserFromCookies(r)
-
-	// If user doens't exist we redirect to login with a callback
-	if user.Id == "" {
-		url := fmt.Sprintf("/user?redirect=/room/%s", room.Id)
-		w.Header().Add("hx-location", url)
-		http.Redirect(w, r, url, http.StatusSeeOther)
-		return
-	}
-
-	if room.Host.Id == "" {
-		room.Host = *user
-	}
-
-	if room.Host.Id != user.Id {
-		if !slices.Contains(room.Users, *user) {
-			room.Users = append(room.Users, *user)
-		}
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:  "previousRoom",
-		Value: room.Id,
-		Path:  "/",
-	})
-
-	err := roomTmpl.ExecuteTemplate(
-		w,
-		"base",
-		struct {
-			User User
-			Room Room
-		}{
-			User: *user,
-			Room: *room,
-		},
-	)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, "Internal Server Error")
-	}
-}
-
-func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
-	roomName := r.PathValue("room")
-
-	room, exists := rooms[roomName]
-
-	if !exists {
-		NotFoundHandler(w, r, "room")
-		return
-	}
-
-	user := getUserFromCookies(r)
-
-	err := roomTmpl.ExecuteTemplate(
-		w,
-		"updates-only",
-		struct {
-			User User
-			Room Room
-		}{
-			User: *user,
-			Room: *room,
-		},
-	)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, "Internal Server Error")
-	}
-}
-
-func createRoom(w http.ResponseWriter, r *http.Request) {
-	room := newRoom()
-	rooms[room.Id] = &room
-
-	http.Redirect(w, r, fmt.Sprintf("/room/%s", room.Id), http.StatusSeeOther)
-}
-
 func newUser(name string) *User {
 	id, _ := uuid.NewV7()
 
@@ -228,11 +142,129 @@ func getUserFromCookies(r *http.Request) *User {
 	return &user
 }
 
-func newRoom() Room {
+func joinRoom(w http.ResponseWriter, r *http.Request) {
+	roomName := r.PathValue("room")
+
+	room, exists := rooms[roomName]
+
+	if !exists {
+		NotFoundHandler(w, r, "room")
+		return
+	}
+
+	user := getUserFromCookies(r)
+
+	// If user doens't exist we redirect to login with a callback
+	if user.Id == "" {
+		url := fmt.Sprintf("/user?redirect=/room/%s", room.Id)
+		w.Header().Add("hx-location", url)
+		http.Redirect(w, r, url, http.StatusSeeOther)
+		return
+	}
+
+	if room.Host.Id == "" {
+		room.mu.Lock()
+		room.Host = *user
+		room.UpdatedAt = time.Now()
+		room.mu.Unlock()
+	}
+
+	if room.Host.Id != user.Id {
+		if !slices.Contains(room.Users, *user) {
+			room.mu.Lock()
+			room.Users = append(room.Users, *user)
+			room.UpdatedAt = time.Now()
+			room.mu.Unlock()
+		}
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:  "previousRoom",
+		Value: room.Id,
+		Path:  "/",
+	})
+
+	err := roomTmpl.ExecuteTemplate(
+		w,
+		"base",
+		struct {
+			User *User
+			Room *Room
+		}{
+			User: user,
+			Room: room,
+		},
+	)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, "Internal Server Error")
+	}
+}
+
+func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
+	roomName := r.PathValue("room")
+	room, exists := rooms[roomName]
+	if !exists {
+		NotFoundHandler(w, r, "room")
+		return
+	}
+	user := getUserFromCookies(r)
+
+	// Long polling
+
+	ifModifiedSince := r.Header.Get("If-Modified-Since")
+	ifModifiedSinceTime, err := time.Parse(time.RFC1123, ifModifiedSince)
+	if err == nil && !room.UpdatedAt.Truncate(time.Second).After(ifModifiedSinceTime) {
+		roomUpdates := make(chan bool)
+
+		room.mu.Lock()
+		room.Subs = append(room.Subs, roomUpdates)
+		room.mu.Unlock()
+
+		defer func() {
+			room.mu.Lock()
+			room.Subs = slices.DeleteFunc(room.Subs, func(s chan bool) bool { return s == roomUpdates })
+			room.mu.Unlock()
+		}()
+
+		select {
+		case <-roomUpdates:
+		case <-time.After(10 * time.Second):
+		}
+	}
+	w.Header().Add("Last-Modified", room.UpdatedAt.Format(time.RFC1123))
+
+	err = roomTmpl.ExecuteTemplate(
+		w,
+		"updates-only",
+		struct {
+			User *User
+			Room *Room
+		}{
+			User: user,
+			Room: room,
+		},
+	)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, "Internal Server Error")
+	}
+}
+
+func createRoom(w http.ResponseWriter, r *http.Request) {
+	room := newRoom()
+	rooms[room.Id] = room
+
+	http.Redirect(w, r, fmt.Sprintf("/room/%s", room.Id), http.StatusSeeOther)
+}
+
+func newRoom() *Room {
 	id, _ := uuid.NewV7()
-	room := Room{Id: id.String()}
+	room := Room{Id: id.String(), UpdatedAt: time.Now()}
 	rooms[room.Id] = &room
-	return room
+	return &room
 }
 
 func updateRoom(w http.ResponseWriter, r *http.Request) {
@@ -245,7 +277,13 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	room.mu.Lock()
 	room.Name = r.FormValue("name")
+	room.UpdatedAt = time.Now()
+	for _, sub := range room.Subs {
+		sub <- true
+	}
+	room.mu.Unlock()
 
 	http.Redirect(w, r, fmt.Sprintf("/room/%s", room.Id), http.StatusSeeOther)
 }
@@ -253,16 +291,16 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 func getPrevRoomFromCookies(r *http.Request) *Room {
 	roomCookie, err := r.Cookie("previousRoom")
 
-	var room Room
+	var room *Room
 
 	if err == nil {
 		maybeRoom, exists := rooms[roomCookie.Value]
 		if exists {
-			room = *maybeRoom
+			room = maybeRoom
 		}
 	}
 
-	return &room
+	return room
 }
 
 func NotFoundHandler(w http.ResponseWriter, r *http.Request, entityName string) {

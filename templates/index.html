@@ -1,6 +1,6 @@
 {{ define "main" }}
   <section>
-    {{ if .Room.Id }}
+    {{ if and .Room .Room.Id }}
       <a
         href="/room/{{ .Room.Id }}"
         hx-get="/room/{{ .Room.Id }}"
