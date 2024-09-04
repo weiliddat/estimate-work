@@ -7,7 +7,7 @@
       <title>Document</title>
       <link
         rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
+        href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.jade.min.css"
       />
       <script src="https://unpkg.com/htmx.org@2.0.2"></script>
     </head>
@@ -15,15 +15,17 @@
       <header>
         <div class="grid" style="align-items: baseline;">
           <div>
-            <a
-              href="/"
-              hx-get="/"
-              hx-push-url="true"
-              hx-target="body"
-              style="text-decoration: none;"
-            >
-              <h1>🔢 Estimate Work</h1>
-            </a>
+            <h1>
+              <a
+                href="/"
+                hx-get="/"
+                hx-push-url="true"
+                hx-target="body"
+                style="text-decoration: none;"
+              >
+                🔢 Estimate Work
+              </a>
+            </h1>
           </div>
 
           <div style="text-align: right;">

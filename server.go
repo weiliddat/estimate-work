@@ -15,9 +15,10 @@ import (
 var templatesFs embed.FS
 
 var (
-	indexTmpl = template.Must(template.New("index").ParseFS(templatesFs, "templates/base.html", "templates/index.html"))
-	roomTmpl  = template.Must(template.New("room").ParseFS(templatesFs, "templates/base.html", "templates/room.html"))
-	userTmpl  = template.Must(template.New("user").ParseFS(templatesFs, "templates/base.html", "templates/user.html"))
+	indexTmpl    = template.Must(template.New("index").ParseFS(templatesFs, "templates/base.html", "templates/index.html"))
+	roomTmpl     = template.Must(template.New("room").ParseFS(templatesFs, "templates/base.html", "templates/room.html"))
+	userTmpl     = template.Must(template.New("user").ParseFS(templatesFs, "templates/base.html", "templates/user.html"))
+	notFoundTmpl = template.Must(template.New("user").ParseFS(templatesFs, "templates/base.html", "templates/not_found.html"))
 )
 
 type User struct {
@@ -113,8 +114,7 @@ func showRoom(w http.ResponseWriter, r *http.Request) {
 	room, exists := rooms[roomName]
 
 	if !exists {
-		w.WriteHeader(http.StatusNotFound)
-		io.WriteString(w, "Room not found")
+		NotFoundHandler(w, r, "room")
 		return
 	}
 
@@ -198,8 +198,7 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 	room, exists := rooms[roomName]
 
 	if !exists {
-		w.WriteHeader(http.StatusNotFound)
-		io.WriteString(w, "Room not found")
+		NotFoundHandler(w, r, "room")
 		return
 	}
 
@@ -221,6 +220,23 @@ func getPrevRoomFromCookies(r *http.Request) *Room {
 	}
 
 	return &room
+}
+
+func NotFoundHandler(w http.ResponseWriter, r *http.Request, entityName string) {
+	user := getUserFromCookies(r)
+	err := notFoundTmpl.ExecuteTemplate(
+		w,
+		"base",
+		struct {
+			User   User
+			Entity string
+		}{*user, entityName},
+	)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, "Internal Server Error")
+	}
 }
 
 func main() {

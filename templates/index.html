@@ -1,12 +1,14 @@
 {{ define "main" }}
   <section>
     {{ if .Room.Id }}
-      Previous Room
       <a
         href="/room/{{ .Room.Id }}"
         hx-get="/room/{{ .Room.Id }}"
         hx-target="body"
+        role="button"
+        style="display: block;"
       >
+        Previous Room:
         {{ if .Room.Name }}
           {{ .Room.Name }}
         {{ else }}
@@ -23,7 +25,7 @@
       hx-target="body"
       hx-push-url="true"
     >
-      <input type="submit" value="New Room" />
+      <input type="submit" value="New Room" class="outline" />
     </form>
   </section>
 {{ end }}

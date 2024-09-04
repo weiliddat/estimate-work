@@ -1,14 +1,14 @@
 {{ define "main" }}
   <section>
     {{ if .Room.Id }}
-      <p>
+      <h3>
         Welcome to Room
         {{ if .Room.Name }}
           {{ .Room.Name }}
         {{ else }}
           {{ .Room.Id }}
         {{ end }}
-      </p>
+      </h3>
     {{ end }}
   </section>
 
