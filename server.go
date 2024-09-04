@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"slices"
 
 	"github.com/google/uuid"
 )
@@ -108,7 +109,7 @@ func createUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func showRoom(w http.ResponseWriter, r *http.Request) {
+func joinRoom(w http.ResponseWriter, r *http.Request) {
 	roomName := r.PathValue("room")
 
 	room, exists := rooms[roomName]
@@ -119,11 +120,23 @@ func showRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := getUserFromCookies(r)
+
+	// If user doens't exist we redirect to login with a callback
 	if user.Id == "" {
 		url := fmt.Sprintf("/user?redirect=/room/%s", room.Id)
 		w.Header().Add("hx-location", url)
 		http.Redirect(w, r, url, http.StatusSeeOther)
 		return
+	}
+
+	if room.Host.Id == "" {
+		room.Host = *user
+	}
+
+	if room.Host.Id != user.Id {
+		if !slices.Contains(room.Users, *user) {
+			room.Users = append(room.Users, *user)
+		}
 	}
 
 	http.SetCookie(w, &http.Cookie{
@@ -139,7 +152,7 @@ func showRoom(w http.ResponseWriter, r *http.Request) {
 			User User
 			Room Room
 		}{
-			User: *getUserFromCookies(r),
+			User: *user,
 			Room: *room,
 		},
 	)
@@ -242,7 +255,7 @@ func NotFoundHandler(w http.ResponseWriter, r *http.Request, entityName string) 
 func main() {
 	http.HandleFunc("GET /{$}", index)
 
-	http.HandleFunc("GET /room/{room}", showRoom)
+	http.HandleFunc("GET /room/{room}", joinRoom)
 	http.HandleFunc("PATCH /room/{room}", updateRoom)
 	http.HandleFunc("POST /room", createRoom)
 

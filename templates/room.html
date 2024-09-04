@@ -25,4 +25,14 @@
       </form>
     </details>
   </section>
+
+  <section>
+    <h3>Participants</h3>
+    <ul>
+      <li>{{ .Room.Host.Name }} (Host)</li>
+      {{ range .Room.Users }}
+        <li>{{ .Name }}</li>
+      {{ end }}
+    </ul>
+  </section>
 {{ end }}
