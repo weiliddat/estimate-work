@@ -13,9 +13,29 @@
     </head>
     <body>
       <header>
-        <a href="/" hx-get="/" hx-push-url="true" hx-target="body" style="text-decoration: none;">
-          <h1>🔢 Estimate Work</h1>
-        </a>
+        <div class="grid" style="align-items: baseline;">
+          <div>
+            <a
+              href="/"
+              hx-get="/"
+              hx-push-url="true"
+              hx-target="body"
+              style="text-decoration: none;"
+            >
+              <h1>🔢 Estimate Work</h1>
+            </a>
+          </div>
+
+          <div style="text-align: right;">
+            <a href="/user">
+              {{ if .User.Id }}
+                {{ .User.Name }}
+              {{ else }}
+                Login
+              {{ end }}
+            </a>
+          </div>
+        </div>
       </header>
 
       <main id="main" class="container">

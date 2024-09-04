@@ -19,7 +19,7 @@
         action="/room/{{ .Room.Id }}"
         method="patch"
         hx-patch="/room/{{ .Room.Id }}"
-        hx-target="main"
+        hx-target="body"
       >
         <input type="text" name="name" placeholder="Room name" />
       </form>

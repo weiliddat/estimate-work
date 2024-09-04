@@ -17,6 +17,7 @@ var templatesFs embed.FS
 var (
 	indexTmpl = template.Must(template.New("index").ParseFS(templatesFs, "templates/base.html", "templates/index.html"))
 	roomTmpl  = template.Must(template.New("room").ParseFS(templatesFs, "templates/base.html", "templates/room.html"))
+	userTmpl  = template.Must(template.New("user").ParseFS(templatesFs, "templates/base.html", "templates/user.html"))
 )
 
 type User struct {
@@ -39,8 +40,6 @@ func index(w http.ResponseWriter, r *http.Request) {
 	user := getUserFromCookies(r)
 	prevRoom := getPrevRoomFromCookies(r)
 
-	log.Println(prevRoom)
-
 	err := indexTmpl.ExecuteTemplate(
 		w,
 		"base",
@@ -54,20 +53,46 @@ func index(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, "Internal Server Error")
 	}
 }
 
-func login(w http.ResponseWriter, r *http.Request) {
-	name := r.FormValue("name")
+func showUser(w http.ResponseWriter, r *http.Request) {
+	user := getUserFromCookies(r)
+	redirect := r.URL.Query().Get("redirect")
 
-	if name == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		io.WriteString(w, "Name is required")
-		return
+	err := userTmpl.ExecuteTemplate(
+		w,
+		"base",
+		struct {
+			User     User
+			Redirect string
+		}{*user, redirect},
+	)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, "Internal Server Error")
 	}
+}
 
-	user := newUser(name)
-	users[user.Id] = &user
+func createUpdateUser(w http.ResponseWriter, r *http.Request) {
+	userId := r.FormValue("id")
+	userName := r.FormValue("name")
+	redirect := r.FormValue("redirect")
+
+	var user *User
+
+	if userId == "" {
+		user = newUser(userName)
+	} else {
+		_, exists := users[userId]
+		if exists {
+			users[userId].Name = userName
+			user = users[userId]
+		}
+	}
 
 	http.SetCookie(w, &http.Cookie{
 		Name:  "user",
@@ -75,10 +100,14 @@ func login(w http.ResponseWriter, r *http.Request) {
 		Path:  "/",
 	})
 
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	if redirect != "" {
+		http.Redirect(w, r, redirect, http.StatusSeeOther)
+	} else {
+		http.Redirect(w, r, "/user", http.StatusSeeOther)
+	}
 }
 
-func gotoRoom(w http.ResponseWriter, r *http.Request) {
+func showRoom(w http.ResponseWriter, r *http.Request) {
 	roomName := r.PathValue("room")
 
 	room, exists := rooms[roomName]
@@ -89,46 +118,35 @@ func gotoRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user := getUserFromCookies(r)
+	if user.Id == "" {
+		url := fmt.Sprintf("/user?redirect=/room/%s", room.Id)
+		w.Header().Add("hx-location", url)
+		http.Redirect(w, r, url, http.StatusSeeOther)
+		return
+	}
+
 	http.SetCookie(w, &http.Cookie{
 		Name:  "previousRoom",
 		Value: room.Id,
 		Path:  "/",
 	})
 
-	isHtmx := r.Header.Get("hx-request")
-
-	if isHtmx != "" {
-		w.Header().Add("hx-push-url", fmt.Sprintf("/room/%s", room.Id))
-
-		err := roomTmpl.ExecuteTemplate(
-			w,
-			"main",
-			struct {
-				User User
-				Room Room
-			}{
-				User: *getUserFromCookies(r),
-				Room: *room,
-			},
-		)
-		if err != nil {
-			log.Println(err)
-		}
-	} else {
-		err := roomTmpl.ExecuteTemplate(
-			w,
-			"base",
-			struct {
-				User User
-				Room Room
-			}{
-				User: *getUserFromCookies(r),
-				Room: *room,
-			},
-		)
-		if err != nil {
-			log.Println(err)
-		}
+	err := roomTmpl.ExecuteTemplate(
+		w,
+		"base",
+		struct {
+			User User
+			Room Room
+		}{
+			User: *getUserFromCookies(r),
+			Room: *room,
+		},
+	)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, "Internal Server Error")
 	}
 }
 
@@ -139,7 +157,7 @@ func createRoom(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/room/%s", room.Id), http.StatusSeeOther)
 }
 
-func newUser(name string) User {
+func newUser(name string) *User {
 	id, _ := uuid.NewV7()
 
 	user := User{
@@ -149,7 +167,7 @@ func newUser(name string) User {
 
 	users[user.Id] = &user
 
-	return user
+	return &user
 }
 
 func getUserFromCookies(r *http.Request) *User {
@@ -207,11 +225,13 @@ func getPrevRoomFromCookies(r *http.Request) *Room {
 
 func main() {
 	http.HandleFunc("GET /{$}", index)
-	http.HandleFunc("POST /login", login)
 
-	http.HandleFunc("GET /room/{room}", gotoRoom)
+	http.HandleFunc("GET /room/{room}", showRoom)
 	http.HandleFunc("PATCH /room/{room}", updateRoom)
 	http.HandleFunc("POST /room", createRoom)
+
+	http.HandleFunc("GET /user", showUser)
+	http.HandleFunc("POST /user", createUpdateUser)
 
 	log.Println("Server is starting on port 8080")
 	log.Fatal(http.ListenAndServe("localhost:8080", nil))

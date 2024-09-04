@@ -1,14 +1,22 @@
 {{ define "main" }}
   <section>
-    {{ if .User.Id }}
-      <p>Welcome, {{ .User.Name }}</p>
-    {{ else }}
-      <form action="/login" method="post">
-        <div class="grid" style="align-items: baseline;">
+    <form action="/user" method="post">
+      <div class="grid" style="align-items: baseline;">
+        {{ if not .User.Id }}
           <label for="name"> What is your name? </label>
-          <input type="text" name="name" placeholder="Name" required />
-        </div>
-      </form>
-    {{ end }}
+        {{ else }}
+          <label for="name"> Change your name </label>
+        {{ end }}
+        <input
+          type="text"
+          name="name"
+          placeholder="Name"
+          value="{{ .User.Name }}"
+          required
+        />
+        <input type="hidden" name="id" value="{{ .User.Id }}" />
+        <input type="hidden" name="redirect" value="{{ .Redirect }}" />
+      </div>
+    </form>
   </section>
 {{ end }}
