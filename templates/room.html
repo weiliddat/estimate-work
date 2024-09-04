@@ -1,7 +1,7 @@
 {{ define "main" }}
   <section>
     {{ if .Room.Id }}
-      <h3>
+      <h3 style="display: inline;">
         Welcome to Room
         {{ if .Room.Name }}
           {{ .Room.Name }}
@@ -9,6 +9,13 @@
           {{ .Room.Id }}
         {{ end }}
       </h3>
+      <a
+        style="cursor: pointer;"
+        class="small"
+        onclick="navigator.clipboard.writeText(window.location); alert('Copied room link to clipboard.');"
+      >
+        Copy room link
+      </a>
     {{ end }}
   </section>
 
