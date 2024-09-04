@@ -1,0 +1,28 @@
+{{ define "main" }}
+  <section>
+    {{ if .Room.Id }}
+      <p>
+        Welcome to Room
+        {{ if .Room.Name }}
+          {{ .Room.Name }}
+        {{ else }}
+          {{ .Room.Id }}
+        {{ end }}
+      </p>
+    {{ end }}
+  </section>
+
+  <section>
+    <details>
+      <summary>Rename Room</summary>
+      <form
+        action="/room/{{ .Room.Id }}"
+        method="patch"
+        hx-patch="/room/{{ .Room.Id }}"
+        hx-target="main"
+      >
+        <input type="text" name="name" placeholder="Room name" />
+      </form>
+    </details>
+  </section>
+{{ end }}

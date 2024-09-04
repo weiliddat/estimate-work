@@ -1,0 +1,14 @@
+{{ define "main" }}
+  <section>
+    {{ if .User.Id }}
+      <p>Welcome, {{ .User.Name }}</p>
+    {{ else }}
+      <form action="/login" method="post">
+        <div class="grid" style="align-items: baseline;">
+          <label for="name"> What is your name? </label>
+          <input type="text" name="name" placeholder="Name" required />
+        </div>
+      </form>
+    {{ end }}
+  </section>
+{{ end }}

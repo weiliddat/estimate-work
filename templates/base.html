@@ -1,0 +1,26 @@
+{{ define "base" }}
+  <!doctype html>
+  <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Document</title>
+      <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
+      />
+      <script src="https://unpkg.com/htmx.org@2.0.2"></script>
+    </head>
+    <body>
+      <header>
+        <a href="/" hx-get="/" hx-push-url="true" hx-target="body" style="text-decoration: none;">
+          <h1>🔢 Estimate Work</h1>
+        </a>
+      </header>
+
+      <main id="main" class="container">
+        {{ template "main" . }}
+      </main>
+    </body>
+  </html>
+{{ end }}

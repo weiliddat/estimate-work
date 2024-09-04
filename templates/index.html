@@ -1,0 +1,23 @@
+{{ define "main" }}
+  <section>
+    {{ if .Room.Id }}
+      Previous Room
+      <a
+        href="/room/{{ .Room.Id }}"
+        hx-get="/room/{{ .Room.Id }}"
+        hx-target="main"
+      >
+        {{ if .Room.Name }}
+          {{ .Room.Name }}
+        {{ else }}
+          {{ .Room.Id }}
+        {{ end }}
+      </a>
+    {{ end }}
+  </section>
+  <section>
+    <form action="/room" method="post">
+      <input type="submit" value="New Room" hx-post="/room" hx-target="main" />
+    </form>
+  </section>
+{{ end }}
