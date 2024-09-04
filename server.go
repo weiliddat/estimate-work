@@ -163,6 +163,36 @@ func joinRoom(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
+	roomName := r.PathValue("room")
+
+	room, exists := rooms[roomName]
+
+	if !exists {
+		NotFoundHandler(w, r, "room")
+		return
+	}
+
+	user := getUserFromCookies(r)
+
+	err := roomTmpl.ExecuteTemplate(
+		w,
+		"updates-only",
+		struct {
+			User User
+			Room Room
+		}{
+			User: *user,
+			Room: *room,
+		},
+	)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, "Internal Server Error")
+	}
+}
+
 func createRoom(w http.ResponseWriter, r *http.Request) {
 	room := newRoom()
 	rooms[room.Id] = &room
@@ -237,6 +267,8 @@ func getPrevRoomFromCookies(r *http.Request) *Room {
 
 func NotFoundHandler(w http.ResponseWriter, r *http.Request, entityName string) {
 	user := getUserFromCookies(r)
+	w.Header().Add("hx-refresh", "true")
+	w.WriteHeader(http.StatusNotFound)
 	err := notFoundTmpl.ExecuteTemplate(
 		w,
 		"base",
@@ -256,6 +288,7 @@ func main() {
 	http.HandleFunc("GET /{$}", index)
 
 	http.HandleFunc("GET /room/{room}", joinRoom)
+	http.HandleFunc("GET /room/{room}/update", getRoomUpdates)
 	http.HandleFunc("PATCH /room/{room}", updateRoom)
 	http.HandleFunc("POST /room", createRoom)
 

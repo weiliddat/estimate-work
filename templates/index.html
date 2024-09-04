@@ -4,6 +4,7 @@
       <a
         href="/room/{{ .Room.Id }}"
         hx-get="/room/{{ .Room.Id }}"
+        hx-push-url="true"
         hx-target="body"
         role="button"
         style="display: block;"
