@@ -2,7 +2,7 @@
   <section>
     {{ block "title" . }}
       <h3 id="title" style="display: inline;" hx-swap-oob="true">
-        Welcome to Room
+        Room
         {{ if .Room.Name }}
           {{ .Room.Name }}
         {{ else }}
@@ -11,11 +11,10 @@
       </h3>
     {{ end }}
     <a
-      style="cursor: pointer;"
-      class="small"
+      style="cursor: pointer; display: inline-block;"
       onclick="navigator.clipboard.writeText(window.location); alert('Copied room link to clipboard.');"
     >
-      Copy room link
+      <small>Copy room link</small>
     </a>
   </section>
 

@@ -39,6 +39,52 @@ type Room struct {
 	Subs      [](chan bool)
 }
 
+func (r *Room) UpdateName(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.Name = name
+	r.UpdatedAt = time.Now()
+	for _, sub := range r.Subs {
+		sub <- true
+	}
+}
+
+func (r *Room) UpdateHost(host User) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.Host = host
+	r.UpdatedAt = time.Now()
+	for _, sub := range r.Subs {
+		sub <- true
+	}
+}
+
+func (r *Room) AddUser(user User) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !slices.Contains(r.Users, user) {
+		r.Users = append(r.Users, user)
+		r.UpdatedAt = time.Now()
+		for _, sub := range r.Subs {
+			sub <- true
+		}
+	}
+}
+
+func (r *Room) RemoveUser(user User) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.Users = slices.DeleteFunc(r.Users, func(u User) bool { return u == user })
+	r.UpdatedAt = time.Now()
+	for _, sub := range r.Subs {
+		sub <- true
+	}
+}
+
 var users = make(map[string]*User)
 
 var rooms = make(map[string]*Room)
@@ -163,19 +209,11 @@ func joinRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if room.Host.Id == "" {
-		room.mu.Lock()
-		room.Host = *user
-		room.UpdatedAt = time.Now()
-		room.mu.Unlock()
+		room.UpdateHost(*user)
 	}
 
 	if room.Host.Id != user.Id {
-		if !slices.Contains(room.Users, *user) {
-			room.mu.Lock()
-			room.Users = append(room.Users, *user)
-			room.UpdatedAt = time.Now()
-			room.mu.Unlock()
-		}
+		room.AddUser(*user)
 	}
 
 	http.SetCookie(w, &http.Cookie{
@@ -277,13 +315,7 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	room.mu.Lock()
-	room.Name = r.FormValue("name")
-	room.UpdatedAt = time.Now()
-	for _, sub := range room.Subs {
-		sub <- true
-	}
-	room.mu.Unlock()
+	room.UpdateName(r.FormValue("name"))
 
 	http.Redirect(w, r, fmt.Sprintf("/room/%s", room.Id), http.StatusSeeOther)
 }
