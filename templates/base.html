@@ -13,20 +13,13 @@
       <script src="https://unpkg.com/htmx.org@2.0.2"></script>
     </head>
     <body>
-      <header class="container-fluid">
+      <header class="container-fluid" hx-boost="true">
         <div
           style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline;"
         >
           <div>
             <h1>
-              <a
-                href="/"
-                hx-get="/"
-                hx-push-url="true"
-                hx-target="body"
-                style="text-decoration: none;"
-                class="contrast"
-              >
+              <a href="/" style="text-decoration: none;" class="contrast">
                 🔢 Estimate Work
               </a>
             </h1>
