@@ -47,6 +47,12 @@
     </details>
   </section>
 
+  {{ block "item" . }}
+    <section id="item" hx-swap-oob="true">
+      <h3>Topic: {{ .Room.Item }}</h3>
+    </section>
+  {{ end }}
+
   {{ block "participants" . }}
     <section id="participants" hx-swap-oob="true">
       <h3>Participants:</h3>
@@ -59,17 +65,11 @@
     </section>
   {{ end }}
 
-  {{ block "item" . }}
-    <section id="item" hx-swap-oob="true">
-      <h3>Topic: {{ .Room.Item }}</h3>
-    </section>
-  {{ end }}
-
 
   <div
     id="updater"
     hx-get="/room/{{ .Room.Id }}/update"
-    hx-trigger="every 2s"
+    hx-trigger="every 5s"
     hx-swap="none"
   >
     🟢

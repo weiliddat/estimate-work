@@ -294,7 +294,7 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 
 		select {
 		case <-roomUpdates:
-		case <-time.After(10 * time.Second):
+		case <-time.After(20 * time.Second):
 		}
 	}
 	w.Header().Add("Last-Modified", room.UpdatedAt.Format(time.RFC1123))
