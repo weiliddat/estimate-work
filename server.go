@@ -35,8 +35,10 @@ type Room struct {
 	Host  User
 	Users []User
 
-	Item      string
+	Topic     string
+	Options   []string
 	Estimates map[string]string
+	Revealed  bool
 
 	mu        sync.Mutex
 	UpdatedAt time.Time
@@ -89,11 +91,11 @@ func (r *Room) RemoveUser(user User) {
 	}
 }
 
-func (r *Room) UpdateItem(item string) {
+func (r *Room) UpdateTopic(topic string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.Item = item
+	r.Topic = topic
 	r.UpdatedAt = time.Now()
 	for _, sub := range r.Subs {
 		sub <- true
@@ -105,6 +107,17 @@ func (r *Room) UpdateEstimate(user User, estimate string) {
 	defer r.mu.Unlock()
 
 	r.Estimates[user.Id] = estimate
+	r.UpdatedAt = time.Now()
+	for _, sub := range r.Subs {
+		sub <- true
+	}
+}
+
+func (r *Room) UpdateRevealed(revealed bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.Revealed = revealed
 	r.UpdatedAt = time.Now()
 	for _, sub := range r.Subs {
 		sub <- true
@@ -216,9 +229,7 @@ func getUserFromCookies(r *http.Request) *User {
 
 func joinRoom(w http.ResponseWriter, r *http.Request) {
 	roomName := r.PathValue("room")
-
 	room, exists := rooms[roomName]
-
 	if !exists {
 		NotFoundHandler(w, r, "room")
 		return
@@ -276,32 +287,40 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 	user := getUserFromCookies(r)
 
 	// Long polling
+	immediate := r.URL.Query().Get("immediate") == "true"
+	if !immediate {
+		ifModifiedSince := r.Header.Get("If-Modified-Since")
+		ifModifiedSinceTime, err := time.Parse(time.RFC1123, ifModifiedSince)
+		if err == nil && !room.UpdatedAt.Truncate(time.Second).After(ifModifiedSinceTime) {
+			roomUpdates := make(chan bool)
 
-	ifModifiedSince := r.Header.Get("If-Modified-Since")
-	ifModifiedSinceTime, err := time.Parse(time.RFC1123, ifModifiedSince)
-	if err == nil && !room.UpdatedAt.Truncate(time.Second).After(ifModifiedSinceTime) {
-		roomUpdates := make(chan bool)
-
-		room.mu.Lock()
-		room.Subs = append(room.Subs, roomUpdates)
-		room.mu.Unlock()
-
-		defer func() {
 			room.mu.Lock()
-			room.Subs = slices.DeleteFunc(room.Subs, func(s chan bool) bool { return s == roomUpdates })
+			room.Subs = append(room.Subs, roomUpdates)
 			room.mu.Unlock()
-		}()
 
-		select {
-		case <-roomUpdates:
-		case <-time.After(20 * time.Second):
+			defer func() {
+				room.mu.Lock()
+				room.Subs = slices.DeleteFunc(room.Subs, func(s chan bool) bool { return s == roomUpdates })
+				room.mu.Unlock()
+			}()
+
+			select {
+			case <-roomUpdates:
+			case <-time.After(20 * time.Second):
+			}
 		}
+		w.Header().Add("Last-Modified", room.UpdatedAt.Format(time.RFC1123))
 	}
-	w.Header().Add("Last-Modified", room.UpdatedAt.Format(time.RFC1123))
 
-	err = roomTmpl.ExecuteTemplate(
+	// Partial template if Hx-Request
+	templateName := "base"
+	if r.Header.Get("Hx-Request") == "true" {
+		templateName = "updates-only"
+	}
+
+	err := roomTmpl.ExecuteTemplate(
 		w,
-		"updates-only",
+		templateName,
 		struct {
 			User *User
 			Room *Room
@@ -326,33 +345,46 @@ func createRoom(w http.ResponseWriter, r *http.Request) {
 
 func newRoom() *Room {
 	id, _ := uuid.NewV7()
-	room := Room{Id: id.String(), UpdatedAt: time.Now()}
+	room := Room{
+		Id:        id.String(),
+		UpdatedAt: time.Now(),
+		Options:   []string{"🤷", "0", "1", "2", "3", "5", "8", "13", "21", "🤯"},
+		Estimates: make(map[string]string),
+	}
 	rooms[room.Id] = &room
 	return &room
 }
 
 func updateRoom(w http.ResponseWriter, r *http.Request) {
 	roomName := r.PathValue("room")
-
 	room, exists := rooms[roomName]
-
 	if !exists {
 		NotFoundHandler(w, r, "room")
 		return
 	}
 
 	newRoomName := r.FormValue("name")
-	newRoomItem := r.FormValue("discussed")
-
 	if newRoomName != "" {
 		room.UpdateName(newRoomName)
 	}
 
-	if newRoomItem != "" {
-		room.UpdateItem(newRoomItem)
+	newRoomTopic := r.FormValue("topic")
+	if newRoomTopic != "" {
+		room.UpdateTopic(newRoomTopic)
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/room/%s/update", room.Id), http.StatusSeeOther)
+	newEstimate := r.FormValue("estimate")
+	if newEstimate != "" {
+		user := getUserFromCookies(r)
+		room.UpdateEstimate(*user, newEstimate)
+	}
+
+	newRevealed := r.FormValue("reveal")
+	if newRevealed != "" {
+		room.UpdateRevealed(newRevealed == "true")
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/room/%s/update?immediate=true", room.Id), http.StatusSeeOther)
 }
 
 func getPrevRoomFromCookies(r *http.Request) *Room {
@@ -394,7 +426,7 @@ func main() {
 
 	http.HandleFunc("GET /room/{room}", joinRoom)
 	http.HandleFunc("GET /room/{room}/update", getRoomUpdates)
-	http.HandleFunc("PATCH /room/{room}", updateRoom)
+	http.HandleFunc("POST /room/{room}", updateRoom)
 	http.HandleFunc("POST /room", createRoom)
 
 	http.HandleFunc("GET /user", showUser)

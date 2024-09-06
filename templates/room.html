@@ -1,8 +1,8 @@
 {{ define "main" }}
   <section>
-    {{ block "title" . }}
-      <h3 id="title" style="display: inline;" hx-swap-oob="true">
-        Room
+    {{ block "room-name" . }}
+      <h3 id="room-name" style="display: inline;" hx-swap-oob="true">
+        Room:
         {{ if .Room.Name }}
           {{ .Room.Name }}
         {{ else }}
@@ -18,50 +18,137 @@
     </a>
   </section>
 
-  <section>
-    <details>
-      <summary>Manage Room</summary>
+  {{ if eq .Room.Host.Id .User.Id }}
+    <section>
+      <details>
+        <summary>Manage Room</summary>
+        <form
+          action="/room/{{ .Room.Id }}"
+          method="post"
+          hx-post="/room/{{ .Room.Id }}"
+          hx-swap="none"
+          hx-sync="#updater:replace"
+          role="group"
+        >
+          <input
+            type="text"
+            name="name"
+            placeholder="Room name"
+            value="{{ .Room.Name }}"
+          />
+          <input type="submit" value="Submit" />
+        </form>
+
+        <form
+          action="/room/{{ .Room.Id }}"
+          method="post"
+          hx-post="/room/{{ .Room.Id }}"
+          hx-swap="none"
+          hx-sync="#updater:replace"
+          role="group"
+        >
+          <input
+            type="text"
+            name="topic"
+            placeholder="Topic"
+            value="{{ .Room.Topic }}"
+          />
+          <input type="submit" value="Submit" />
+        </form>
+
+        {{ block "reveal-control" . }}
+          <form
+            action="/room/{{ .Room.Id }}"
+            method="post"
+            hx-post="/room/{{ .Room.Id }}"
+            hx-swap="none"
+            hx-sync="#updater:replace"
+            class="grid"
+            id="reveal-control"
+            hx-swap-oob="true"
+          >
+            {{ if not .Room.Revealed }}
+              <button type="submit" name="reveal" value="true">
+                Reveal Estimates
+              </button>
+            {{ else }}
+              <button
+                type="submit"
+                name="reveal"
+                value="false"
+                class="secondary"
+              >
+                Hide Estimates
+              </button>
+            {{ end }}
+          </form>
+        {{ end }}
+      </details>
+    </section>
+  {{ end }}
+
+  {{ block "topic" . }}
+    <hgroup id="topic" hx-swap-oob="true">
+      <h3>Topic: {{ .Room.Topic }}</h3>
+      {{ if .Room.Revealed }}
+        <p>Estimates are revealed 🐵</p>
+      {{ else }}
+        <p>Estimates are hidden 🙈</p>
+      {{ end }}
+    </hgroup>
+  {{ end }}
+
+  {{ block "options" . }}
+    <section id="options" hx-swap-oob="true">
       <form
         action="/room/{{ .Room.Id }}"
-        method="patch"
-        hx-patch="/room/{{ .Room.Id }}"
+        method="post"
+        hx-post="/room/{{ .Room.Id }}"
         hx-swap="none"
         hx-sync="#updater:replace"
-        role="group"
+        class="grid"
       >
-        <input type="text" name="name" placeholder="Room name" />
-        <input type="submit" value="Submit" />
+        {{ range .Room.Options }}
+          <input
+            type="submit"
+            name="estimate"
+            value="{{ . }}"
+            class="{{ if ne . (index $.Room.Estimates $.User.Id) }}
+              outline
+            {{ end }}"
+          />
+        {{ end }}
       </form>
-
-      <form
-        action="/room/{{ .Room.Id }}"
-        method="patch"
-        hx-patch="/room/{{ .Room.Id }}"
-        hx-swap="none"
-        hx-sync="#updater:replace"
-        role="group"
-      >
-        <input type="text" name="discussed" placeholder="Discussed item" />
-        <input type="submit" value="Submit" />
-      </form>
-    </details>
-  </section>
-
-  {{ block "item" . }}
-    <section id="item" hx-swap-oob="true">
-      <h3>Topic: {{ .Room.Item }}</h3>
     </section>
   {{ end }}
 
   {{ block "participants" . }}
     <section id="participants" hx-swap-oob="true">
       <h3>Participants:</h3>
-      <ul>
-        <li>{{ .Room.Host.Name }} (Host)</li>
-        {{ range .Room.Users }}
-          <li>{{ .Name }}</li>
-        {{ end }}
-      </ul>
+      <div class="grid">
+        <h4>{{ .Room.Host.Name }} (Host)</h4>
+        <h4>
+          {{ $estimate := index $.Room.Estimates $.Room.Host.Id }}
+          {{ if or $.Room.Revealed (eq $.Room.Host.Id $.User.Id) }}
+            {{ $estimate }}
+          {{ else }}
+            ?
+          {{ end }}
+        </h4>
+      </div>
+      {{ range .Room.Users }}
+        <div class="grid">
+          <h4>{{ .Name }}</h4>
+          <h4>
+            {{ $estimate := index $.Room.Estimates .Id }}
+            {{ if or $.Room.Revealed (eq .Id $.User.Id) }}
+              {{ $estimate }}
+            {{ else }}
+              ?
+            {{ end }}
+          </h4>
+        </div>
+      {{ end }}
     </section>
   {{ end }}
 
@@ -69,15 +156,16 @@
   <div
     id="updater"
     hx-get="/room/{{ .Room.Id }}/update"
-    hx-trigger="every 5s"
+    hx-trigger="every 2s"
     hx-swap="none"
-  >
-    🟢
-  </div>
+    hx-sync="this:abort"
+  ></div>
 {{ end }}
 
 {{ define "updates-only" }}
-  {{ template "title" . }}
+  {{ template "room-name" . }}
   {{ template "participants" . }}
-  {{ template "item" . }}
+  {{ template "topic" . }}
+  {{ template "options" . }}
+  {{ template "reveal-control" . }}
 {{ end }}
