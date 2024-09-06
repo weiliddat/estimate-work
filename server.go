@@ -315,20 +315,19 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 			room.Subs = append(room.Subs, roomUpdates)
 			room.mu.Unlock()
 
-			defer func() {
-				room.mu.Lock()
-				room.Subs = slices.DeleteFunc(
-					room.Subs,
-					func(s chan bool) bool { return s == roomUpdates },
-				)
-				room.mu.Unlock()
-			}()
-
 			select {
 			case <-r.Context().Done():
 			case <-roomUpdates:
 			case <-time.After(20 * time.Second):
 			}
+
+			room.mu.Lock()
+			room.Subs = slices.DeleteFunc(
+				room.Subs,
+				func(s chan bool) bool { return s == roomUpdates },
+			)
+			room.mu.Unlock()
+			close(roomUpdates)
 		}
 		w.Header().Add("Last-Modified", room.UpdatedAt.Format(time.RFC1123))
 	}
