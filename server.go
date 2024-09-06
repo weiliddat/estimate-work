@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,10 +19,11 @@ import (
 var templatesFs embed.FS
 
 var (
-	indexTmpl    = template.Must(template.New("index").ParseFS(templatesFs, "templates/base.html", "templates/index.html"))
-	roomTmpl     = template.Must(template.New("room").ParseFS(templatesFs, "templates/base.html", "templates/room.html"))
-	userTmpl     = template.Must(template.New("user").ParseFS(templatesFs, "templates/base.html", "templates/user.html"))
-	notFoundTmpl = template.Must(template.New("notFound").ParseFS(templatesFs, "templates/base.html", "templates/not_found.html"))
+	funcs        = template.FuncMap{"join": strings.Join}
+	indexTmpl    = template.Must(template.New("index").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/index.html"))
+	roomTmpl     = template.Must(template.New("room").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/room.html"))
+	userTmpl     = template.Must(template.New("user").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/user.html"))
+	notFoundTmpl = template.Must(template.New("notFound").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/not_found.html"))
 )
 
 type User struct {
@@ -118,6 +120,21 @@ func (r *Room) UpdateRevealed(revealed bool) {
 	defer r.mu.Unlock()
 
 	r.Revealed = revealed
+	r.UpdatedAt = time.Now()
+	for _, sub := range r.Subs {
+		sub <- true
+	}
+}
+
+func (r *Room) UpdateOptions(options string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.Options = []string{}
+	for _, v := range strings.Split(options, ",") {
+		r.Options = append(r.Options, strings.TrimSpace(v))
+	}
+
 	r.UpdatedAt = time.Now()
 	for _, sub := range r.Subs {
 		sub <- true
@@ -300,11 +317,15 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 
 			defer func() {
 				room.mu.Lock()
-				room.Subs = slices.DeleteFunc(room.Subs, func(s chan bool) bool { return s == roomUpdates })
+				room.Subs = slices.DeleteFunc(
+					room.Subs,
+					func(s chan bool) bool { return s == roomUpdates },
+				)
 				room.mu.Unlock()
 			}()
 
 			select {
+			case <-r.Context().Done():
 			case <-roomUpdates:
 			case <-time.After(20 * time.Second):
 			}
@@ -363,6 +384,8 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Println(room.Subs)
+
 	newRoomName := r.FormValue("name")
 	if newRoomName != "" {
 		room.UpdateName(newRoomName)
@@ -382,6 +405,11 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 	newRevealed := r.FormValue("reveal")
 	if newRevealed != "" {
 		room.UpdateRevealed(newRevealed == "true")
+	}
+
+	newOptions := r.FormValue("options")
+	if newOptions != "" {
+		room.UpdateOptions(newOptions)
 	}
 
 	http.Redirect(w, r, fmt.Sprintf("/room/%s/update?immediate=true", room.Id), http.StatusSeeOther)

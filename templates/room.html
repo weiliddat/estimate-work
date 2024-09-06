@@ -18,55 +18,48 @@
     </a>
   </section>
 
-  {{ if eq .Room.Host.Id .User.Id }}
-    <section>
-      <details>
-        <summary>Manage Room</summary>
-        <form
-          action="/room/{{ .Room.Id }}"
-          method="post"
-          hx-post="/room/{{ .Room.Id }}"
-          hx-swap="none"
-          hx-sync="#updater:replace"
-          role="group"
-        >
-          <input
-            type="text"
-            name="name"
-            placeholder="Room name"
-            value="{{ .Room.Name }}"
-          />
-          <input type="submit" value="Submit" />
-        </form>
-
-        <form
-          action="/room/{{ .Room.Id }}"
-          method="post"
-          hx-post="/room/{{ .Room.Id }}"
-          hx-swap="none"
-          hx-sync="#updater:replace"
-          role="group"
-        >
-          <input
-            type="text"
-            name="topic"
-            placeholder="Topic"
-            value="{{ .Room.Topic }}"
-          />
-          <input type="submit" value="Submit" />
-        </form>
-
-        {{ block "reveal-control" . }}
+  {{ block "room-controls" . }}
+    {{ if eq .Room.Host.Id .User.Id }}
+      <section id="room-controls" hx-swap-oob="true">
+        <details id="room-controls-open">
+          <summary>Manage Room</summary>
           <form
             action="/room/{{ .Room.Id }}"
             method="post"
             hx-post="/room/{{ .Room.Id }}"
             hx-swap="none"
             hx-sync="#updater:replace"
-            class="grid"
-            id="reveal-control"
-            hx-swap-oob="true"
           >
+            <fieldset role="group">
+              <input
+                type="text"
+                name="name"
+                placeholder="Update room name"
+                value=""
+              />
+              <input type="submit" value="Submit" />
+            </fieldset>
+
+            <fieldset role="group">
+              <input
+                type="text"
+                name="topic"
+                placeholder="Update topic"
+                value=""
+              />
+              <input type="submit" value="Submit" />
+            </fieldset>
+
+            <fieldset role="group">
+              <input
+                type="text"
+                name="options"
+                placeholder="Estimation options"
+                value="{{ join .Room.Options "," }}"
+              />
+              <input type="submit" value="Submit" />
+            </fieldset>
+
             {{ if not .Room.Revealed }}
               <button type="submit" name="reveal" value="true">
                 Reveal Estimates
@@ -82,9 +75,9 @@
               </button>
             {{ end }}
           </form>
-        {{ end }}
-      </details>
-    </section>
+        </details>
+      </section>
+    {{ end }}
   {{ end }}
 
   {{ block "topic" . }}
@@ -167,5 +160,5 @@
   {{ template "participants" . }}
   {{ template "topic" . }}
   {{ template "options" . }}
-  {{ template "reveal-control" . }}
+  {{ template "room-controls" . }}
 {{ end }}
