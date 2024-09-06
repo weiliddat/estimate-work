@@ -108,7 +108,13 @@ func (r *Room) UpdateEstimate(user User, estimate string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.Estimates[user.Id] = estimate
+	existingEstimate, exists := r.Estimates[user.Id]
+	if exists && existingEstimate == estimate {
+		delete(r.Estimates, user.Id)
+	} else {
+		r.Estimates[user.Id] = estimate
+	}
+
 	r.UpdatedAt = time.Now()
 	for _, sub := range r.Subs {
 		sub <- true
