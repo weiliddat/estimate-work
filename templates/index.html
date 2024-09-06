@@ -3,9 +3,7 @@
     {{ if and .Room .Room.Id }}
       <a
         href="/room/{{ .Room.Id }}"
-        hx-get="/room/{{ .Room.Id }}"
-        hx-push-url="true"
-        hx-target="body"
+        hx-boost="true"
         role="button"
         style="display: block;"
       >
@@ -19,13 +17,7 @@
     {{ end }}
   </section>
   <section>
-    <form
-      action="/room"
-      method="post"
-      hx-post="/room"
-      hx-target="body"
-      hx-push-url="true"
-    >
+    <form action="/room" method="post" hx-boost="true">
       <input type="submit" value="New Room" class="outline" />
     </form>
   </section>
