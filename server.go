@@ -21,7 +21,7 @@ var (
 	indexTmpl    = template.Must(template.New("index").ParseFS(templatesFs, "templates/base.html", "templates/index.html"))
 	roomTmpl     = template.Must(template.New("room").ParseFS(templatesFs, "templates/base.html", "templates/room.html"))
 	userTmpl     = template.Must(template.New("user").ParseFS(templatesFs, "templates/base.html", "templates/user.html"))
-	notFoundTmpl = template.Must(template.New("user").ParseFS(templatesFs, "templates/base.html", "templates/not_found.html"))
+	notFoundTmpl = template.Must(template.New("notFound").ParseFS(templatesFs, "templates/base.html", "templates/not_found.html"))
 )
 
 type User struct {
@@ -30,11 +30,15 @@ type User struct {
 }
 
 type Room struct {
+	Id    string
+	Name  string
+	Host  User
+	Users []User
+
+	Item      string
+	Estimates map[string]string
+
 	mu        sync.Mutex
-	Id        string
-	Name      string
-	Host      User
-	Users     []User
 	UpdatedAt time.Time
 	Subs      [](chan bool)
 }
@@ -79,6 +83,28 @@ func (r *Room) RemoveUser(user User) {
 	defer r.mu.Unlock()
 
 	r.Users = slices.DeleteFunc(r.Users, func(u User) bool { return u == user })
+	r.UpdatedAt = time.Now()
+	for _, sub := range r.Subs {
+		sub <- true
+	}
+}
+
+func (r *Room) UpdateItem(item string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.Item = item
+	r.UpdatedAt = time.Now()
+	for _, sub := range r.Subs {
+		sub <- true
+	}
+}
+
+func (r *Room) UpdateEstimate(user User, estimate string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.Estimates[user.Id] = estimate
 	r.UpdatedAt = time.Now()
 	for _, sub := range r.Subs {
 		sub <- true
@@ -315,9 +341,18 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	room.UpdateName(r.FormValue("name"))
+	newRoomName := r.FormValue("name")
+	newRoomItem := r.FormValue("discussed")
 
-	http.Redirect(w, r, fmt.Sprintf("/room/%s", room.Id), http.StatusSeeOther)
+	if newRoomName != "" {
+		room.UpdateName(newRoomName)
+	}
+
+	if newRoomItem != "" {
+		room.UpdateItem(newRoomItem)
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/room/%s/update", room.Id), http.StatusSeeOther)
 }
 
 func getPrevRoomFromCookies(r *http.Request) *Room {

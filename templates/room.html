@@ -20,26 +20,36 @@
 
   <section>
     <details>
-      <summary>Rename Room</summary>
+      <summary>Manage Room</summary>
       <form
         action="/room/{{ .Room.Id }}"
         method="patch"
         hx-patch="/room/{{ .Room.Id }}"
-        hx-target="body"
+        hx-swap="none"
+        hx-sync="#updater:replace"
+        role="group"
       >
         <input type="text" name="name" placeholder="Room name" />
+        <input type="submit" value="Submit" />
+      </form>
+
+      <form
+        action="/room/{{ .Room.Id }}"
+        method="patch"
+        hx-patch="/room/{{ .Room.Id }}"
+        hx-swap="none"
+        hx-sync="#updater:replace"
+        role="group"
+      >
+        <input type="text" name="discussed" placeholder="Discussed item" />
+        <input type="submit" value="Submit" />
       </form>
     </details>
   </section>
 
   {{ block "participants" . }}
-    <section
-      id="participants"
-      hx-get="/room/{{ .Room.Id }}/update"
-      hx-trigger="every 2s"
-      hx-swap-oob="true"
-    >
-      <h3>Participants</h3>
+    <section id="participants" hx-swap-oob="true">
+      <h3>Participants:</h3>
       <ul>
         <li>{{ .Room.Host.Name }} (Host)</li>
         {{ range .Room.Users }}
@@ -48,9 +58,26 @@
       </ul>
     </section>
   {{ end }}
+
+  {{ block "item" . }}
+    <section id="item" hx-swap-oob="true">
+      <h3>Topic: {{ .Room.Item }}</h3>
+    </section>
+  {{ end }}
+
+
+  <div
+    id="updater"
+    hx-get="/room/{{ .Room.Id }}/update"
+    hx-trigger="every 2s"
+    hx-swap="none"
+  >
+    🟢
+  </div>
 {{ end }}
 
 {{ define "updates-only" }}
   {{ template "title" . }}
   {{ template "participants" . }}
+  {{ template "item" . }}
 {{ end }}
