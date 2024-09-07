@@ -21,7 +21,7 @@
   {{ if eq .Room.Host.Id .User.Id }}
     <section>
       <details id="room-controls-open">
-        <summary>Manage Room</summary>
+        <summary>Manage room</summary>
         {{ block "room-controls" . }}
           <form
             id="room-controls"
@@ -62,9 +62,13 @@
               <input type="submit" value="Submit" />
             </fieldset>
 
+            <button type="submit" name="kick" value="true" class="outline secondary">
+              Kick all users
+            </button>
+
             {{ if not .Room.Revealed }}
               <button type="submit" name="reveal" value="true">
-                Reveal Estimates
+                Reveal estimates
               </button>
             {{ else }}
               <button
@@ -73,7 +77,7 @@
                 value="false"
                 class="secondary"
               >
-                Hide Estimates
+                Hide estimates
               </button>
             {{ end }}
           </form>

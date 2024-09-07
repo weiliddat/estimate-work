@@ -47,106 +47,6 @@ type Room struct {
 	Subs      [](chan bool)
 }
 
-func (r *Room) UpdateName(name string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.Name = name
-	r.UpdatedAt = time.Now()
-	for _, sub := range r.Subs {
-		sub <- true
-	}
-}
-
-func (r *Room) UpdateHost(host User) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.Host = host
-	r.UpdatedAt = time.Now()
-	for _, sub := range r.Subs {
-		sub <- true
-	}
-}
-
-func (r *Room) AddUser(user User) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if !slices.Contains(r.Users, user) {
-		r.Users = append(r.Users, user)
-		r.UpdatedAt = time.Now()
-		for _, sub := range r.Subs {
-			sub <- true
-		}
-	}
-}
-
-func (r *Room) RemoveUser(user User) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.Users = slices.DeleteFunc(r.Users, func(u User) bool { return u == user })
-	r.UpdatedAt = time.Now()
-	for _, sub := range r.Subs {
-		sub <- true
-	}
-}
-
-func (r *Room) UpdateTopic(topic string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.Topic = topic
-	r.UpdatedAt = time.Now()
-	for _, sub := range r.Subs {
-		sub <- true
-	}
-}
-
-func (r *Room) UpdateEstimate(user User, estimate string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	existingEstimate, exists := r.Estimates[user.Id]
-	if exists && existingEstimate == estimate {
-		delete(r.Estimates, user.Id)
-	} else {
-		r.Estimates[user.Id] = estimate
-	}
-
-	r.UpdatedAt = time.Now()
-	for _, sub := range r.Subs {
-		sub <- true
-	}
-}
-
-func (r *Room) UpdateRevealed(revealed bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.Revealed = revealed
-	r.UpdatedAt = time.Now()
-	for _, sub := range r.Subs {
-		sub <- true
-	}
-}
-
-func (r *Room) UpdateOptions(options string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.Options = []string{}
-	for _, v := range strings.Split(options, ",") {
-		r.Options = append(r.Options, strings.TrimSpace(v))
-	}
-
-	r.UpdatedAt = time.Now()
-	for _, sub := range r.Subs {
-		sub <- true
-	}
-}
-
 var users = make(map[string]*User)
 
 var rooms = make(map[string]*Room)
@@ -269,11 +169,17 @@ func joinRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if room.Host.Id == "" {
-		room.UpdateHost(*user)
+		room.Host = *user
 	}
 
 	if room.Host.Id != user.Id {
-		room.AddUser(*user)
+		if !slices.Contains(room.Users, *user) {
+			room.Users = append(room.Users, *user)
+			room.UpdatedAt = time.Now()
+			for _, sub := range room.Subs {
+				sub <- true
+			}
+		}
 	}
 
 	http.SetCookie(w, &http.Cookie{
@@ -309,6 +215,17 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 	}
 	user := getUserFromCookies(r)
 
+	// Redirect user to homepage if kicked
+	if !slices.Contains(room.Users, *user) && room.Host != *user {
+		if r.Header.Get("hx-request") == "true" {
+			w.Header().Add("hx-location", "/")
+			return
+		} else {
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
+	}
+
 	// Long polling
 	immediate := r.URL.Query().Get("immediate") == "true"
 	if !immediate {
@@ -340,7 +257,7 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 
 	// Partial template if Hx-Request
 	templateName := "base"
-	if r.Header.Get("Hx-Request") == "true" {
+	if r.Header.Get("hx-request") == "true" {
 		templateName = "updates-only"
 	}
 
@@ -389,32 +306,46 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Println(room.Subs)
+	room.mu.Lock()
+	defer room.mu.Unlock()
 
 	newRoomName := r.FormValue("name")
 	if newRoomName != "" {
-		room.UpdateName(newRoomName)
+		room.Name = newRoomName
 	}
 
 	newRoomTopic := r.FormValue("topic")
 	if newRoomTopic != "" {
-		room.UpdateTopic(newRoomTopic)
+		room.Topic = newRoomTopic
 	}
 
 	newEstimate := r.FormValue("estimate")
 	if newEstimate != "" {
 		user := getUserFromCookies(r)
-		room.UpdateEstimate(*user, newEstimate)
+		room.Estimates[user.Id] = newEstimate
 	}
 
 	newRevealed := r.FormValue("reveal")
 	if newRevealed != "" {
-		room.UpdateRevealed(newRevealed == "true")
+		room.Revealed = newRevealed == "true"
 	}
 
 	newOptions := r.FormValue("options")
 	if newOptions != "" {
-		room.UpdateOptions(newOptions)
+		room.Options = []string{}
+		for _, v := range strings.Split(newOptions, ",") {
+			room.Options = append(room.Options, strings.TrimSpace(v))
+		}
+	}
+
+	kickUsers := r.FormValue("kick")
+	if kickUsers == "true" {
+		room.Users = []User{}
+	}
+
+	room.UpdatedAt = time.Now()
+	for _, sub := range room.Subs {
+		sub <- true
 	}
 
 	http.Redirect(w, r, fmt.Sprintf("/room/%s/update?immediate=true", room.Id), http.StatusSeeOther)
