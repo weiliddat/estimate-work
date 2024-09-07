@@ -62,24 +62,14 @@
               <input type="submit" value="Submit" />
             </fieldset>
 
-            <button type="submit" name="kick" value="true" class="outline secondary">
+            <button
+              type="submit"
+              name="kick"
+              value="true"
+              class="outline secondary"
+            >
               Kick all users
             </button>
-
-            {{ if not .Room.Revealed }}
-              <button type="submit" name="reveal" value="true">
-                Reveal estimates
-              </button>
-            {{ else }}
-              <button
-                type="submit"
-                name="reveal"
-                value="false"
-                class="secondary"
-              >
-                Hide estimates
-              </button>
-            {{ end }}
           </form>
         {{ end }}
       </details>
@@ -118,6 +108,26 @@
           />
         {{ end }}
       </form>
+
+      {{ if eq .Room.Host.Id .User.Id }}
+        <form
+          action="/room/{{ .Room.Id }}"
+          method="post"
+          hx-post="/room/{{ .Room.Id }}"
+          hx-swap="none"
+          hx-sync="#updater:replace"
+        >
+          {{ if not .Room.Revealed }}
+            <button type="submit" name="reveal" value="true">
+              Reveal estimates
+            </button>
+          {{ else }}
+            <button type="submit" name="reveal" value="false" class="secondary">
+              Hide estimates
+            </button>
+          {{ end }}
+        </form>
+      {{ end }}
     </section>
   {{ end }}
 
