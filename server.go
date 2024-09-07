@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -396,6 +397,7 @@ func main() {
 	http.HandleFunc("GET /user", showUser)
 	http.HandleFunc("POST /user", createUpdateUser)
 
-	log.Println("Server is starting on port 8080")
-	log.Fatal(http.ListenAndServe("localhost:8080", nil))
+	listen := os.Getenv("LISTEN")
+	log.Println("Server is starting on", listen)
+	log.Fatal(http.ListenAndServe(listen, nil))
 }
