@@ -253,8 +253,10 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 			room.mu.Unlock()
 			close(roomUpdates)
 		}
-		w.Header().Add("Last-Modified", room.UpdatedAt.Format(time.RFC1123))
 	}
+
+	w.Header().Add("Last-Modified", room.UpdatedAt.Format(time.RFC1123))
+	w.Header().Add("Cache-Control", "no-cache")
 
 	// Partial template if Hx-Request
 	templateName := "base"
