@@ -238,33 +238,30 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Long polling
-	immediate := r.URL.Query().Get("immediate") == "true"
 	hasUpdates := true
-	if !immediate {
-		ifModifiedSince := r.Header.Get("If-Modified-Since")
-		ifModifiedSinceTime, err := time.Parse(time.RFC1123, ifModifiedSince)
-		if err == nil && !room.UpdatedAt.Truncate(time.Second).After(ifModifiedSinceTime) {
-			roomUpdates := make(chan bool)
+	ifModifiedSince := r.Header.Get("If-Modified-Since")
+	ifModifiedSinceTime, err := time.Parse(time.RFC1123, ifModifiedSince)
+	if err == nil && !room.UpdatedAt.Truncate(time.Second).After(ifModifiedSinceTime) {
+		roomUpdates := make(chan bool)
 
-			room.mu.Lock()
-			room.Subs = append(room.Subs, roomUpdates)
-			room.mu.Unlock()
+		room.mu.Lock()
+		room.Subs = append(room.Subs, roomUpdates)
+		room.mu.Unlock()
 
-			select {
-			case <-r.Context().Done():
-			case <-roomUpdates:
-			case <-time.After(20 * time.Second):
-				hasUpdates = false
-			}
-
-			room.mu.Lock()
-			room.Subs = slices.DeleteFunc(
-				room.Subs,
-				func(s chan bool) bool { return s == roomUpdates },
-			)
-			room.mu.Unlock()
-			close(roomUpdates)
+		select {
+		case <-r.Context().Done():
+		case <-roomUpdates:
+		case <-time.After(20 * time.Second):
+			hasUpdates = false
 		}
+
+		room.mu.Lock()
+		room.Subs = slices.DeleteFunc(
+			room.Subs,
+			func(s chan bool) bool { return s == roomUpdates },
+		)
+		room.mu.Unlock()
+		close(roomUpdates)
 	}
 
 	w.Header().Add("Last-Modified", room.UpdatedAt.Format(time.RFC1123))
@@ -281,7 +278,7 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 		templateName = "updates-only"
 	}
 
-	err := roomTmpl.ExecuteTemplate(
+	err = roomTmpl.ExecuteTemplate(
 		w,
 		templateName,
 		struct {
@@ -374,7 +371,7 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 		sub <- true
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/room/%s/update?immediate=true", room.Id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/room/%s/update", room.Id), http.StatusSeeOther)
 }
 
 func getPrevRoomFromCookies(r *http.Request) *Room {
