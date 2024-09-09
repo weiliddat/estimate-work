@@ -35,8 +35,8 @@ type User struct {
 type Room struct {
 	Id    string
 	Name  string
-	Host  User
-	Users []User
+	Host  *User
+	Users []*User
 
 	Topic     string
 	Options   []string
@@ -46,6 +46,20 @@ type Room struct {
 	mu        sync.Mutex
 	UpdatedAt time.Time
 	Subs      [](chan bool)
+}
+
+func (r *Room) hasUser(id string) bool {
+	if r.Host.Id == id {
+		return true
+	}
+
+	for _, u := range r.Users {
+		if u.Id == id {
+			return true
+		}
+	}
+
+	return false
 }
 
 var users = make(map[string]*User)
@@ -139,16 +153,14 @@ func newUser(name string) *User {
 func getUserFromCookies(r *http.Request) *User {
 	userCookie, err := r.Cookie("user")
 
-	var user User
-
 	if err == nil {
-		maybeUser, exists := users[userCookie.Value]
+		user, exists := users[userCookie.Value]
 		if exists {
-			user = *maybeUser
+			return user
 		}
 	}
 
-	return &user
+	return &User{}
 }
 
 func joinRoom(w http.ResponseWriter, r *http.Request) {
@@ -169,17 +181,15 @@ func joinRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if room.Host.Id == "" {
-		room.Host = *user
+	if room.Host == nil {
+		room.Host = user
 	}
 
-	if room.Host.Id != user.Id {
-		if !slices.Contains(room.Users, *user) {
-			room.Users = append(room.Users, *user)
-			room.UpdatedAt = time.Now()
-			for _, sub := range room.Subs {
-				sub <- true
-			}
+	if !room.hasUser(user.Id) {
+		room.Users = append(room.Users, user)
+		room.UpdatedAt = time.Now()
+		for _, sub := range room.Subs {
+			sub <- true
 		}
 	}
 
@@ -217,7 +227,7 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 	user := getUserFromCookies(r)
 
 	// Redirect user to homepage if kicked
-	if !slices.Contains(room.Users, *user) && room.Host != *user {
+	if !room.hasUser(user.Id) {
 		if r.Header.Get("hx-request") == "true" {
 			w.Header().Add("hx-location", "/")
 			return
@@ -229,6 +239,7 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 
 	// Long polling
 	immediate := r.URL.Query().Get("immediate") == "true"
+	hasUpdates := true
 	if !immediate {
 		ifModifiedSince := r.Header.Get("If-Modified-Since")
 		ifModifiedSinceTime, err := time.Parse(time.RFC1123, ifModifiedSince)
@@ -243,6 +254,7 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 			case <-r.Context().Done():
 			case <-roomUpdates:
 			case <-time.After(20 * time.Second):
+				hasUpdates = false
 			}
 
 			room.mu.Lock()
@@ -257,6 +269,11 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add("Last-Modified", room.UpdatedAt.Format(time.RFC1123))
 	w.Header().Add("Cache-Control", "no-cache")
+
+	if !hasUpdates {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
 
 	// Partial template if Hx-Request
 	templateName := "base"
@@ -325,7 +342,13 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 	newEstimate := r.FormValue("estimate")
 	if newEstimate != "" {
 		user := getUserFromCookies(r)
-		room.Estimates[user.Id] = newEstimate
+
+		existingEstimate, exists := room.Estimates[user.Id]
+		if exists && existingEstimate == newEstimate {
+			delete(room.Estimates, user.Id)
+		} else {
+			room.Estimates[user.Id] = newEstimate
+		}
 	}
 
 	newRevealed := r.FormValue("reveal")
@@ -343,7 +366,7 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 
 	kickUsers := r.FormValue("kick")
 	if kickUsers == "true" {
-		room.Users = []User{}
+		room.Users = []*User{}
 	}
 
 	room.UpdatedAt = time.Now()
