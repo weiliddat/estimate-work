@@ -1,5 +1,11 @@
 {{ define "main" }}
   <section>
+    <p>
+      A <mark>free</mark> and <mark>ad-free</mark> tool to collaboratively
+      estimate work.
+    </p>
+  </section>
+  <section>
     {{ if and .Room .Room.Id }}
       <a
         href="/room/{{ .Room.Id }}"

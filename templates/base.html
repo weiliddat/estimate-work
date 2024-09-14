@@ -1,6 +1,6 @@
 {{ define "base" }}
   <!doctype html>
-  <html lang="en">
+  <html lang="en" style="height: 100%;">
     <head>
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -16,7 +16,7 @@
       />
       <script src="https://unpkg.com/htmx.org@2.0.2"></script>
     </head>
-    <body>
+    <body style="display: flex; flex-direction: column; height: 100%;">
       <header class="container-fluid" hx-boost="true">
         <div
           style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline;"
@@ -41,9 +41,19 @@
         </div>
       </header>
 
-      <main id="main" class="container">
+      <main id="main" class="container" style="flex: 1 0 auto;">
         {{ template "main" . }}
       </main>
+
+      <footer class="container-fluid" style="flex-shrink: 0;">
+        <hr />
+        <small style="opacity: 0.5;">
+          Made by
+          <a href="https://chiawei.ong" class="secondary" target="_blank"
+            >Chiawei</a
+          >
+        </small>
+      </footer>
     </body>
   </html>
 {{ end }}
