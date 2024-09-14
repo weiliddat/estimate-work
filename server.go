@@ -167,7 +167,7 @@ func joinRoom(w http.ResponseWriter, r *http.Request) {
 	roomName := r.PathValue("room")
 	room, exists := rooms[roomName]
 	if !exists {
-		NotFoundHandler(w, r, "room")
+		NotFoundHandler(w, r)
 		return
 	}
 
@@ -221,7 +221,7 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 	roomName := r.PathValue("room")
 	room, exists := rooms[roomName]
 	if !exists {
-		NotFoundHandler(w, r, "room")
+		NotFoundHandler(w, r)
 		return
 	}
 	user := getUserFromCookies(r)
@@ -319,7 +319,7 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 	roomName := r.PathValue("room")
 	room, exists := rooms[roomName]
 	if !exists {
-		NotFoundHandler(w, r, "room")
+		NotFoundHandler(w, r)
 		return
 	}
 
@@ -389,18 +389,11 @@ func getPrevRoomFromCookies(r *http.Request) *Room {
 	return room
 }
 
-func NotFoundHandler(w http.ResponseWriter, r *http.Request, entityName string) {
+func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
 	user := getUserFromCookies(r)
 	w.Header().Add("hx-refresh", "true")
 	w.WriteHeader(http.StatusNotFound)
-	err := notFoundTmpl.ExecuteTemplate(
-		w,
-		"base",
-		struct {
-			User   User
-			Entity string
-		}{*user, entityName},
-	)
+	err := notFoundTmpl.ExecuteTemplate(w, "base", struct{ User User }{*user})
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -418,6 +411,8 @@ func main() {
 
 	http.HandleFunc("GET /user", showUser)
 	http.HandleFunc("POST /user", createUpdateUser)
+
+	http.HandleFunc("GET /", NotFoundHandler)
 
 	listen := os.Getenv("LISTEN")
 	log.Println("Server is starting on", listen)

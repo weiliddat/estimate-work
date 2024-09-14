@@ -7,19 +7,19 @@ app = 'estimate-work'
 primary_region = 'ams'
 
 [build]
-  [build.args]
-    GO_VERSION = '1.23.0'
+    [build.args]
+        GO_VERSION = '1.23.0'
 
 [env]
-  LISTEN = ':8080'
+    LISTEN = ':8080'
 
 [http_service]
-  internal_port = 8080
-  force_https = true
-  auto_stop_machines = 'suspend'
-  auto_start_machines = true
-  min_machines_running = 0
-  processes = ['app']
+    internal_port = 8080
+    force_https = true
+    auto_stop_machines = 'suspend'
+    auto_start_machines = true
+    min_machines_running = 0
+    processes = ['app']
 
 [[vm]]
-  size = 'shared-cpu-1x'
+    size = 'shared-cpu-1x'
