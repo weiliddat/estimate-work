@@ -23,7 +23,6 @@ var (
 	funcs        = template.FuncMap{"join": strings.Join}
 	indexTmpl    = template.Must(template.New("index").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/index.html"))
 	roomTmpl     = template.Must(template.New("room").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/room.html"))
-	userTmpl     = template.Must(template.New("user").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/user.html"))
 	notFoundTmpl = template.Must(template.New("notFound").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/not_found.html"))
 )
 
@@ -33,10 +32,11 @@ type User struct {
 }
 
 type Room struct {
-	Id    string
-	Name  string
-	Host  *User
-	Users []*User
+	Id   string
+	Name string
+
+	HostId string
+	Users  []*User
 
 	Topic     string
 	Options   []string
@@ -48,27 +48,28 @@ type Room struct {
 	Subs      [](chan bool)
 }
 
-func (r *Room) hasUser(id string) bool {
-	if r.Host.Id == id {
-		return true
-	}
-
+func (r *Room) GetUser(id string) *User {
 	for _, u := range r.Users {
 		if u.Id == id {
-			return true
+			return u
 		}
 	}
 
-	return false
+	return nil
 }
 
-var users = make(map[string]*User)
+func (r *Room) DisplayName() string {
+	if r.Name != "" {
+		return r.Name
+	}
+
+	return r.Id
+}
 
 var rooms = make(map[string]*Room)
 
 func index(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromCookies(r)
-	prevRoom := getPrevRoomFromCookies(r)
+	room, user := getReqRoomUser(r)
 
 	err := indexTmpl.ExecuteTemplate(
 		w,
@@ -78,7 +79,7 @@ func index(w http.ResponseWriter, r *http.Request) {
 			Room *Room
 		}{
 			User: user,
-			Room: prevRoom,
+			Room: room,
 		},
 	)
 	if err != nil {
@@ -88,116 +89,40 @@ func index(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func showUser(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromCookies(r)
-	redirect := r.URL.Query().Get("redirect")
+func getReqRoomUser(r *http.Request) (*Room, *User) {
+	var roomId, userId string
 
-	err := userTmpl.ExecuteTemplate(
-		w,
-		"base",
-		struct {
-			User     User
-			Redirect string
-		}{*user, redirect},
-	)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, "Internal Server Error")
-	}
-}
-
-func createUpdateUser(w http.ResponseWriter, r *http.Request) {
-	userId := r.FormValue("id")
-	userName := r.FormValue("name")
-	redirect := r.FormValue("redirect")
-
-	var user *User
-
-	if userId == "" {
-		user = newUser(userName)
-	} else {
-		_, exists := users[userId]
-		if exists {
-			users[userId].Name = userName
-			user = users[userId]
+	roomId = r.PathValue("room")
+	if roomId == "" {
+		roomCookie, err := r.Cookie("room")
+		if err == nil {
+			roomId = roomCookie.Value
 		}
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:  "user",
-		Value: user.Id,
-		Path:  "/",
-	})
-
-	if redirect != "" {
-		http.Redirect(w, r, redirect, http.StatusSeeOther)
-	} else {
-		http.Redirect(w, r, "/user", http.StatusSeeOther)
-	}
-}
-
-func newUser(name string) *User {
-	id, _ := uuid.NewV7()
-
-	user := User{
-		Id:   id.String(),
-		Name: name,
-	}
-
-	users[user.Id] = &user
-
-	return &user
-}
-
-func getUserFromCookies(r *http.Request) *User {
-	userCookie, err := r.Cookie("user")
-
-	if err == nil {
-		user, exists := users[userCookie.Value]
-		if exists {
-			return user
-		}
-	}
-
-	return &User{}
-}
-
-func joinRoom(w http.ResponseWriter, r *http.Request) {
-	roomName := r.PathValue("room")
-	room, exists := rooms[roomName]
+	room, exists := rooms[roomId]
 	if !exists {
+		return nil, nil
+	}
+
+	userCookie, err := r.Cookie("user")
+	if err != nil {
+		return room, nil
+	}
+	userId = userCookie.Value
+
+	user := room.GetUser(userId)
+
+	return room, user
+}
+
+func showRoom(w http.ResponseWriter, r *http.Request) {
+	room, user := getReqRoomUser(r)
+
+	if room == nil {
 		NotFoundHandler(w, r)
 		return
 	}
-
-	user := getUserFromCookies(r)
-
-	// If user doens't exist we redirect to login with a callback
-	if user.Id == "" {
-		url := fmt.Sprintf("/user?redirect=/room/%s", room.Id)
-		w.Header().Add("hx-location", url)
-		http.Redirect(w, r, url, http.StatusSeeOther)
-		return
-	}
-
-	if room.Host == nil {
-		room.Host = user
-	}
-
-	if !room.hasUser(user.Id) {
-		room.Users = append(room.Users, user)
-		room.UpdatedAt = time.Now()
-		for _, sub := range room.Subs {
-			sub <- true
-		}
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:  "previousRoom",
-		Value: room.Id,
-		Path:  "/",
-	})
 
 	err := roomTmpl.ExecuteTemplate(
 		w,
@@ -218,16 +143,10 @@ func joinRoom(w http.ResponseWriter, r *http.Request) {
 }
 
 func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
-	roomName := r.PathValue("room")
-	room, exists := rooms[roomName]
-	if !exists {
-		NotFoundHandler(w, r)
-		return
-	}
-	user := getUserFromCookies(r)
+	room, user := getReqRoomUser(r)
 
 	// Redirect user to homepage if kicked
-	if !room.hasUser(user.Id) {
+	if room == nil || user == nil {
 		if r.Header.Get("hx-request") == "true" {
 			w.Header().Add("hx-location", "/")
 			return
@@ -297,16 +216,17 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 }
 
 func createRoom(w http.ResponseWriter, r *http.Request) {
-	room := newRoom()
+	room := NewRoom()
 	rooms[room.Id] = room
 
 	http.Redirect(w, r, fmt.Sprintf("/room/%s", room.Id), http.StatusSeeOther)
 }
 
-func newRoom() *Room {
+func NewRoom() *Room {
 	id, _ := uuid.NewV7()
 	room := Room{
 		Id:        id.String(),
+		Users:     []*User{},
 		UpdatedAt: time.Now(),
 		Options:   []string{"🤷", "0", "1", "2", "3", "5", "8", "13", "21", "🤯"},
 		Estimates: make(map[string]string),
@@ -316,15 +236,56 @@ func newRoom() *Room {
 }
 
 func updateRoom(w http.ResponseWriter, r *http.Request) {
-	roomName := r.PathValue("room")
-	room, exists := rooms[roomName]
-	if !exists {
+	room, user := getReqRoomUser(r)
+
+	if room == nil {
 		NotFoundHandler(w, r)
 		return
 	}
 
 	room.mu.Lock()
 	defer room.mu.Unlock()
+
+	newUserName := r.FormValue("user-name")
+	if newUserName != "" {
+		if user != nil {
+			// User exists, just update name
+			user.Name = newUserName
+		} else {
+			// Create user and join room (as host if doesn't exist)
+			var userId string
+
+			// Reuse userId to rejoin other rooms
+			userCookie, err := r.Cookie("user")
+			if err == nil && userCookie != nil {
+				userId = userCookie.Value
+			} else {
+				id, _ := uuid.NewV7()
+				userId = id.String()
+			}
+
+			user = &User{
+				Id:   userId,
+				Name: newUserName,
+			}
+
+			room.Users = append(room.Users, user)
+			if room.HostId == "" {
+				room.HostId = user.Id
+			}
+
+			http.SetCookie(w, &http.Cookie{
+				Name:  "room",
+				Value: room.Id,
+				Path:  "/",
+			})
+			http.SetCookie(w, &http.Cookie{
+				Name:  "user",
+				Value: user.Id,
+				Path:  "/",
+			})
+		}
+	}
 
 	newRoomName := r.FormValue("name")
 	if newRoomName != "" {
@@ -338,7 +299,7 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 
 	newEstimate := r.FormValue("estimate")
 	if newEstimate != "" {
-		user := getUserFromCookies(r)
+		room, user := getReqRoomUser(r)
 
 		existingEstimate, exists := room.Estimates[user.Id]
 		if exists && existingEstimate == newEstimate {
@@ -364,6 +325,7 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 	kickUsers := r.FormValue("kick")
 	if kickUsers == "true" {
 		room.Users = []*User{}
+		room.Estimates = make(map[string]string)
 	}
 
 	room.UpdatedAt = time.Now()
@@ -371,29 +333,18 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 		sub <- true
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/room/%s/update", room.Id), http.StatusSeeOther)
-}
-
-func getPrevRoomFromCookies(r *http.Request) *Room {
-	roomCookie, err := r.Cookie("previousRoom")
-
-	var room *Room
-
-	if err == nil {
-		maybeRoom, exists := rooms[roomCookie.Value]
-		if exists {
-			room = maybeRoom
-		}
+	hxRequest := r.Header.Get("hx-request") == "true"
+	if hxRequest {
+		http.Redirect(w, r, fmt.Sprintf("/room/%s/update", room.Id), http.StatusSeeOther)
+	} else {
+		http.Redirect(w, r, fmt.Sprintf("/room/%s", room.Id), http.StatusSeeOther)
 	}
-
-	return room
 }
 
 func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromCookies(r)
 	w.Header().Add("hx-refresh", "true")
 	w.WriteHeader(http.StatusNotFound)
-	err := notFoundTmpl.ExecuteTemplate(w, "base", struct{ User User }{*user})
+	err := notFoundTmpl.ExecuteTemplate(w, "base", nil)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -403,16 +354,13 @@ func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	http.HandleFunc("GET /{$}", index)
-
-	http.HandleFunc("GET /room/{room}", joinRoom)
-	http.HandleFunc("GET /room/{room}/update", getRoomUpdates)
-	http.HandleFunc("POST /room/{room}", updateRoom)
-	http.HandleFunc("POST /room", createRoom)
-
-	http.HandleFunc("GET /user", showUser)
-	http.HandleFunc("POST /user", createUpdateUser)
-
 	http.HandleFunc("GET /", NotFoundHandler)
+
+	http.HandleFunc("GET /room/{room}", showRoom)
+	http.HandleFunc("GET /room/{room}/update", getRoomUpdates)
+
+	http.HandleFunc("POST /room", createRoom)
+	http.HandleFunc("POST /room/{room}", updateRoom)
 
 	listen := os.Getenv("LISTEN")
 	log.Println("Server is starting on", listen)

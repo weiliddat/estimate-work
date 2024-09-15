@@ -1,12 +1,13 @@
 {{ define "main" }}
   <section>
     <p>
-      A <mark>free</mark> and <mark>ad-free</mark> tool to collaboratively
-      estimate work.
+      A
+      <em data-tooltip="as in beer, source, ad/tracker free">free</em> tool
+      to collaboratively estimate work effort via consensus.
     </p>
   </section>
   <section>
-    {{ if and .Room .Room.Id }}
+    {{ if and .Room }}
       <a
         href="/room/{{ .Room.Id }}"
         hx-boost="true"
@@ -14,11 +15,7 @@
         style="display: block;"
       >
         Previous Room:
-        {{ if .Room.Name }}
-          {{ .Room.Name }}
-        {{ else }}
-          {{ .Room.Id }}
-        {{ end }}
+        {{ .Room.DisplayName }}
       </a>
     {{ end }}
   </section>

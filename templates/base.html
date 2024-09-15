@@ -18,27 +18,11 @@
     </head>
     <body style="display: flex; flex-direction: column; height: 100%;">
       <header class="container-fluid" hx-boost="true">
-        <div
-          style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline;"
-        >
-          <div>
-            <h1>
-              <a href="/" style="text-decoration: none;" class="contrast">
-                🔢 Estimate Work
-              </a>
-            </h1>
-          </div>
-
-          <div style="text-align: right;">
-            <a href="/user">
-              {{ if .User.Id }}
-                {{ .User.Name }}
-              {{ else }}
-                Login
-              {{ end }}
-            </a>
-          </div>
-        </div>
+        <h1>
+          <a href="/" style="text-decoration: none;" class="contrast">
+            🔢 Estimate Work
+          </a>
+        </h1>
       </header>
 
       <main id="main" class="container" style="flex: 1 0 auto;">
@@ -51,6 +35,12 @@
           Made by
           <a href="https://chiawei.ong" class="secondary" target="_blank"
             >Chiawei</a
+          >
+          <a
+            href="https://github.com/weiliddat/estimate-work"
+            class="secondary"
+            target="_blank"
+            >Source</a
           >
         </small>
       </footer>
