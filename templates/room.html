@@ -92,14 +92,16 @@
     </section>
 
     {{ block "topic" . }}
-      <hgroup id="topic" hx-swap-oob="true">
-        <h3>Topic: {{ .Room.Topic }}</h3>
-        {{ if .Room.Revealed }}
-          <p>Estimates are revealed 🐵</p>
-        {{ else }}
-          <p>Estimates are hidden 🙈</p>
-        {{ end }}
-      </hgroup>
+      <section>
+        <hgroup id="topic" hx-swap-oob="true">
+          <h3>Topic: {{ .Room.Topic }}</h3>
+          {{ if .Room.Revealed }}
+            <p>Estimates are revealed 🐵</p>
+          {{ else }}
+            <p>Estimates are hidden 🙈</p>
+          {{ end }}
+        </hgroup>
+      </section>
     {{ end }}
 
     {{ block "options" . }}
