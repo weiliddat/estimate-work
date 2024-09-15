@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -14,38 +16,41 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
-//go:embed templates/*.html
-var templatesFs embed.FS
-
 var (
+	//go:embed templates/*.html
+	templatesFs  embed.FS
 	funcs        = template.FuncMap{"join": strings.Join}
 	indexTmpl    = template.Must(template.New("index").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/index.html"))
 	roomTmpl     = template.Must(template.New("room").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/room.html"))
 	notFoundTmpl = template.Must(template.New("notFound").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/not_found.html"))
+
+	rooms       = make(map[string]*Room)
+	redisClient *redis.Client
 )
 
 type User struct {
-	Id   string
-	Name string
+	Id   string `json:"id"`
+	Name string `json:"name"`
 }
 
 type Room struct {
-	Id   string
-	Name string
+	Id   string `json:"id"`
+	Name string `json:"name"`
 
-	HostId string
-	Users  []*User
+	HostId string  `json:"hostId"`
+	Users  []*User `json:"users"`
 
-	Topic     string
-	Options   []string
-	Estimates map[string]string
-	Revealed  bool
+	Topic     string            `json:"topic"`
+	Options   []string          `json:"options"`
+	Estimates map[string]string `json:"estimates"`
+	Revealed  bool              `json:"revealed"`
 
-	mu        sync.Mutex
-	UpdatedAt time.Time
-	Subs      [](chan bool)
+	mu        sync.Mutex    `json:"-"`
+	UpdatedAt time.Time     `json:"updatedAt"`
+	Subs      [](chan bool) `json:"-"`
 }
 
 func (r *Room) GetUser(id string) *User {
@@ -66,9 +71,20 @@ func (r *Room) DisplayName() string {
 	return r.Id
 }
 
-var rooms = make(map[string]*Room)
+func NewRoom() *Room {
+	id, _ := uuid.NewV7()
+	room := Room{
+		Id:        id.String(),
+		Users:     []*User{},
+		UpdatedAt: time.Now(),
+		Options:   []string{"🤷", "0", "1", "2", "3", "5", "8", "13", "21", "🤯"},
+		Estimates: make(map[string]string),
+	}
+	rooms[room.Id] = &room
+	return &room
+}
 
-func index(w http.ResponseWriter, r *http.Request) {
+func indexHandler(w http.ResponseWriter, r *http.Request) {
 	room, user := getReqRoomUser(r)
 
 	err := indexTmpl.ExecuteTemplate(
@@ -83,9 +99,7 @@ func index(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, "Internal Server Error")
+		internalErrorHandler(w, r, err)
 	}
 }
 
@@ -116,11 +130,11 @@ func getReqRoomUser(r *http.Request) (*Room, *User) {
 	return room, user
 }
 
-func showRoom(w http.ResponseWriter, r *http.Request) {
+func getRoomHandler(w http.ResponseWriter, r *http.Request) {
 	room, user := getReqRoomUser(r)
 
 	if room == nil {
-		NotFoundHandler(w, r)
+		notFoundHandler(w, r)
 		return
 	}
 
@@ -136,13 +150,11 @@ func showRoom(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, "Internal Server Error")
+		internalErrorHandler(w, r, err)
 	}
 }
 
-func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
+func getRoomUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	room, user := getReqRoomUser(r)
 
 	// Redirect user to homepage if kicked
@@ -209,37 +221,22 @@ func getRoomUpdates(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, "Internal Server Error")
+		internalErrorHandler(w, r, err)
 	}
 }
 
-func createRoom(w http.ResponseWriter, r *http.Request) {
+func createRoomHandler(w http.ResponseWriter, r *http.Request) {
 	room := NewRoom()
 	rooms[room.Id] = room
 
 	http.Redirect(w, r, fmt.Sprintf("/room/%s", room.Id), http.StatusSeeOther)
 }
 
-func NewRoom() *Room {
-	id, _ := uuid.NewV7()
-	room := Room{
-		Id:        id.String(),
-		Users:     []*User{},
-		UpdatedAt: time.Now(),
-		Options:   []string{"🤷", "0", "1", "2", "3", "5", "8", "13", "21", "🤯"},
-		Estimates: make(map[string]string),
-	}
-	rooms[room.Id] = &room
-	return &room
-}
-
-func updateRoom(w http.ResponseWriter, r *http.Request) {
+func updateRoomHandler(w http.ResponseWriter, r *http.Request) {
 	room, user := getReqRoomUser(r)
 
 	if room == nil {
-		NotFoundHandler(w, r)
+		notFoundHandler(w, r)
 		return
 	}
 
@@ -333,6 +330,22 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 		sub <- true
 	}
 
+	serialized, err := json.Marshal(room)
+	if err != nil {
+		internalErrorHandler(w, r, err)
+		return
+	}
+	err = redisClient.Set(
+		r.Context(),
+		fmt.Sprintf("room:%s", room.Id),
+		serialized,
+		10*24*time.Hour,
+	).Err()
+	if err != nil {
+		internalErrorHandler(w, r, err)
+		return
+	}
+
 	hxRequest := r.Header.Get("hx-request") == "true"
 	if hxRequest {
 		http.Redirect(w, r, fmt.Sprintf("/room/%s/update", room.Id), http.StatusSeeOther)
@@ -341,28 +354,57 @@ func updateRoom(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
+func notFoundHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("hx-refresh", "true")
 	w.WriteHeader(http.StatusNotFound)
 	err := notFoundTmpl.ExecuteTemplate(w, "base", nil)
 	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, "Internal Server Error")
+		internalErrorHandler(w, r, err)
 	}
 }
 
+func internalErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
+	log.Printf("Error %+v caused by %+v\n", err, r)
+	w.Header().Add("hx-refresh", "true")
+	w.WriteHeader(http.StatusInternalServerError)
+	io.WriteString(w, "Internal Server Error")
+}
+
 func main() {
-	http.HandleFunc("GET /{$}", index)
-	http.HandleFunc("GET /", NotFoundHandler)
+	listenAddr := os.Getenv("LISTEN")
+	redisUrl := os.Getenv("REDIS_URL")
 
-	http.HandleFunc("GET /room/{room}", showRoom)
-	http.HandleFunc("GET /room/{room}/update", getRoomUpdates)
+	redisOpt, err := redis.ParseURL(redisUrl)
+	if err != nil {
+		log.Fatal(err)
+	}
+	redisClient = redis.NewClient(redisOpt)
 
-	http.HandleFunc("POST /room", createRoom)
-	http.HandleFunc("POST /room/{room}", updateRoom)
+	ctx := context.Background()
+	roomKeys := redisClient.Scan(ctx, 0, "room:*", 0).Iterator()
+	for roomKeys.Next(ctx) {
+		roomKey := roomKeys.Val()
+		var room Room
+		serialized, err := redisClient.Get(ctx, roomKey).Bytes()
+		if err != nil {
+			log.Fatal(err)
+		}
+		err = json.Unmarshal(serialized, &room)
+		if err != nil {
+			log.Fatal(err)
+		}
+		rooms[room.Id] = &room
+	}
 
-	listen := os.Getenv("LISTEN")
-	log.Println("Server is starting on", listen)
-	log.Fatal(http.ListenAndServe(listen, nil))
+	http.HandleFunc("GET /{$}", indexHandler)
+	http.HandleFunc("GET /", notFoundHandler)
+
+	http.HandleFunc("GET /room/{room}", getRoomHandler)
+	http.HandleFunc("GET /room/{room}/update", getRoomUpdateHandler)
+
+	http.HandleFunc("POST /room", createRoomHandler)
+	http.HandleFunc("POST /room/{room}", updateRoomHandler)
+
+	log.Println("Server is starting on", listenAddr)
+	log.Fatal(http.ListenAndServe(listenAddr, nil))
 }
