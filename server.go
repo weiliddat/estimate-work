@@ -351,35 +351,35 @@ func internalErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
 	io.WriteString(w, "Internal Server Error")
 }
 
-func readFromCacheFile() {
-	cacheFilePath := os.Getenv("CACHE_FILE_PATH")
-	cacheFile, err := os.ReadFile(cacheFilePath)
+func readFromDataFile() {
+	dataFilePath := os.Getenv("DATA_FILE_PATH")
+	dataFile, err := os.ReadFile(dataFilePath)
 	if os.IsNotExist(err) {
-		log.Println("Cache file does not exist, OK")
+		log.Println("Data file does not exist, OK")
 	} else if err != nil {
 		log.Fatal("Failed to read file: ", err)
 	} else {
-		cacheBytes := bytes.NewBuffer(cacheFile)
-		cacheDecoder := gob.NewDecoder(cacheBytes)
-		err = cacheDecoder.Decode(&rooms)
+		dataBytes := bytes.NewBuffer(dataFile)
+		dataDecoder := gob.NewDecoder(dataBytes)
+		err = dataDecoder.Decode(&rooms)
 		if err != nil {
 			log.Fatal("Failed to serialize from file: ", err)
 		}
-		log.Printf("Restored from cache file %v rooms", len(rooms))
+		log.Printf("Restored from data file %v rooms", len(rooms))
 	}
 }
 
-func writeToCacheFile() {
+func writeToDataFile() {
 	for _, r := range rooms {
 		r.mu.Lock()
 	}
-	cacheFilePath := os.Getenv("CACHE_FILE_PATH")
-	cacheFile, err := os.Create(cacheFilePath)
+	dataFilePath := os.Getenv("DATA_FILE_PATH")
+	dataFile, err := os.Create(dataFilePath)
 	if err != nil {
 		log.Fatal("Failed to create file: ", err)
 	}
-	cacheEncoder := gob.NewEncoder(cacheFile)
-	err = cacheEncoder.Encode(rooms)
+	dataEncoder := gob.NewEncoder(dataFile)
+	err = dataEncoder.Encode(rooms)
 	if err != nil {
 		log.Fatal("Failed to serialize to file: ", err)
 	}
@@ -405,13 +405,13 @@ func main() {
 	listenAddr := os.Getenv("LISTEN")
 
 	gob.Register(Room{})
-	readFromCacheFile()
+	readFromDataFile()
 	writeInterval := time.NewTicker(1 * time.Second)
 	go func() {
 		for {
 			<-writeInterval.C
 			cleanupOldRooms()
-			writeToCacheFile()
+			writeToDataFile()
 		}
 	}()
 

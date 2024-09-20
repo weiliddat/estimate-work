@@ -12,7 +12,7 @@ primary_region = 'ams'
 
 [env]
     LISTEN = ':8080'
-    CACHE_FILE_PATH = "/data/data.bin"
+    DATA_FILE_PATH = "/data/data.bin"
 
 [mounts]
     source = "estimate_work_data"
