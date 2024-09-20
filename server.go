@@ -365,6 +365,7 @@ func readFromCacheFile() {
 		if err != nil {
 			log.Fatal("Failed to serialize from file: ", err)
 		}
+		log.Printf("Restored from cache file %v rooms", len(rooms))
 	}
 }
 
@@ -392,6 +393,7 @@ func cleanupOldRooms() {
 	for _, r := range rooms {
 		r.mu.Lock()
 		if r.UpdatedAt.Before(tenDaysAgo) {
+			log.Printf("Cleaning up room %+v", r)
 			delete(rooms, r.Id)
 		} else {
 			r.mu.Unlock()
