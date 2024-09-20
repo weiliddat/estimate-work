@@ -12,11 +12,16 @@ primary_region = 'ams'
 
 [env]
     LISTEN = ':8080'
+    CACHE_FILE_PATH = "/data/data.bin"
+
+[mounts]
+    source = "estimate_work_data"
+    destination = "/data"
 
 [http_service]
     internal_port = 8080
     force_https = true
-    auto_stop_machines = 'suspend'
+    auto_stop_machines = 'stop'
     auto_start_machines = true
     min_machines_running = 0
     processes = ['app']
