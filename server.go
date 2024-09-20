@@ -1,9 +1,9 @@
 package main
 
 import (
-	"context"
+	"bytes"
 	"embed"
-	"encoding/json"
+	"encoding/gob"
 	"fmt"
 	"html/template"
 	"io"
@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 )
 
 var (
@@ -26,31 +25,29 @@ var (
 	indexTmpl    = template.Must(template.New("index").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/index.html"))
 	roomTmpl     = template.Must(template.New("room").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/room.html"))
 	notFoundTmpl = template.Must(template.New("notFound").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/not_found.html"))
-
-	rooms       = make(map[string]*Room)
-	redisClient *redis.Client
+	rooms        = make(map[string]*Room)
 )
 
 type User struct {
-	Id   string `json:"id"`
-	Name string `json:"name"`
+	Id   string
+	Name string
 }
 
 type Room struct {
-	Id   string `json:"id"`
-	Name string `json:"name"`
+	Id   string
+	Name string
 
-	HostId string  `json:"hostId"`
-	Users  []*User `json:"users"`
+	HostId string
+	Users  []*User
 
-	Topic     string            `json:"topic"`
-	Options   []string          `json:"options"`
-	Estimates map[string]string `json:"estimates"`
-	Revealed  bool              `json:"revealed"`
+	Topic     string
+	Options   []string
+	Estimates map[string]string
+	Revealed  bool
 
-	mu        sync.Mutex    `json:"-"`
-	UpdatedAt time.Time     `json:"updatedAt"`
-	Subs      [](chan bool) `json:"-"`
+	UpdatedAt time.Time
+	mu        sync.Mutex
+	subs      [](chan bool)
 }
 
 func (r *Room) GetUser(id string) *User {
@@ -176,7 +173,7 @@ func getRoomUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		roomUpdates := make(chan bool)
 
 		room.mu.Lock()
-		room.Subs = append(room.Subs, roomUpdates)
+		room.subs = append(room.subs, roomUpdates)
 		room.mu.Unlock()
 
 		select {
@@ -187,8 +184,8 @@ func getRoomUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		room.mu.Lock()
-		room.Subs = slices.DeleteFunc(
-			room.Subs,
+		room.subs = slices.DeleteFunc(
+			room.subs,
 			func(s chan bool) bool { return s == roomUpdates },
 		)
 		room.mu.Unlock()
@@ -326,24 +323,8 @@ func updateRoomHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	room.UpdatedAt = time.Now()
-	for _, sub := range room.Subs {
+	for _, sub := range room.subs {
 		sub <- true
-	}
-
-	serialized, err := json.Marshal(room)
-	if err != nil {
-		internalErrorHandler(w, r, err)
-		return
-	}
-	err = redisClient.Set(
-		r.Context(),
-		fmt.Sprintf("room:%s", room.Id),
-		serialized,
-		10*24*time.Hour,
-	).Err()
-	if err != nil {
-		internalErrorHandler(w, r, err)
-		return
 	}
 
 	hxRequest := r.Header.Get("hx-request") == "true"
@@ -370,31 +351,69 @@ func internalErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
 	io.WriteString(w, "Internal Server Error")
 }
 
+func readFromDataFile() {
+	dataFilePath := os.Getenv("DATA_FILE_PATH")
+	dataFile, err := os.ReadFile(dataFilePath)
+	if os.IsNotExist(err) {
+		log.Println("Data file does not exist, OK")
+	} else if err != nil {
+		log.Fatal("Failed to read file: ", err)
+	} else {
+		dataBytes := bytes.NewBuffer(dataFile)
+		dataDecoder := gob.NewDecoder(dataBytes)
+		err = dataDecoder.Decode(&rooms)
+		if err != nil {
+			log.Fatal("Failed to serialize from file: ", err)
+		}
+		log.Printf("Restored from data file %v rooms", len(rooms))
+	}
+}
+
+func writeToDataFile() {
+	for _, r := range rooms {
+		r.mu.Lock()
+	}
+	dataFilePath := os.Getenv("DATA_FILE_PATH")
+	dataFile, err := os.Create(dataFilePath)
+	if err != nil {
+		log.Fatal("Failed to create file: ", err)
+	}
+	dataEncoder := gob.NewEncoder(dataFile)
+	err = dataEncoder.Encode(rooms)
+	if err != nil {
+		log.Fatal("Failed to serialize to file: ", err)
+	}
+	for _, r := range rooms {
+		r.mu.Unlock()
+	}
+}
+
+func cleanupOldRooms() {
+	tenDaysAgo := time.Now().Add(-10 * 24 * time.Hour)
+	for _, r := range rooms {
+		r.mu.Lock()
+		if r.UpdatedAt.Before(tenDaysAgo) {
+			log.Printf("Cleaning up room %+v", r)
+			delete(rooms, r.Id)
+		} else {
+			r.mu.Unlock()
+		}
+	}
+}
+
 func main() {
 	listenAddr := os.Getenv("LISTEN")
-	redisUrl := os.Getenv("REDIS_URL")
 
-	redisOpt, err := redis.ParseURL(redisUrl)
-	if err != nil {
-		log.Fatal(err)
-	}
-	redisClient = redis.NewClient(redisOpt)
-
-	ctx := context.Background()
-	roomKeys := redisClient.Scan(ctx, 0, "room:*", 0).Iterator()
-	for roomKeys.Next(ctx) {
-		roomKey := roomKeys.Val()
-		var room Room
-		serialized, err := redisClient.Get(ctx, roomKey).Bytes()
-		if err != nil {
-			log.Fatal(err)
+	gob.Register(Room{})
+	readFromDataFile()
+	writeInterval := time.NewTicker(1 * time.Second)
+	go func() {
+		for {
+			<-writeInterval.C
+			cleanupOldRooms()
+			writeToDataFile()
 		}
-		err = json.Unmarshal(serialized, &room)
-		if err != nil {
-			log.Fatal(err)
-		}
-		rooms[room.Id] = &room
-	}
+	}()
 
 	http.HandleFunc("GET /{$}", indexHandler)
 	http.HandleFunc("GET /", notFoundHandler)
