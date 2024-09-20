@@ -1,4 +1,4 @@
-module estimate-work
+module github.com/weiliddat/estimate-work
 
 go 1.23.0
 
