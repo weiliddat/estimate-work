@@ -131,17 +131,17 @@
             hx-sync="#updater:replace"
           >
             {{ if not .Room.Revealed }}
-              <button type="submit" name="reveal" value="true">
-                Reveal estimates
+              <button type="submit" name="show-estimates" value="true">
+                Show estimates
               </button>
             {{ else }}
               <button
                 type="submit"
-                name="reveal"
-                value="false"
+                name="delete-estimates"
+                value="true"
                 class="secondary"
               >
-                Hide estimates
+                Delete and hide estimates
               </button>
             {{ end }}
           </form>

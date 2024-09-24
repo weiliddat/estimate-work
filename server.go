@@ -303,9 +303,15 @@ func updateRoomHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	newRevealed := r.FormValue("reveal")
-	if newRevealed != "" {
-		room.Revealed = newRevealed == "true"
+	showEstimates := r.FormValue("show-estimates")
+	if showEstimates == "true" {
+		room.Revealed = true
+	}
+
+	deleteEstimates := r.FormValue("delete-estimates")
+	if deleteEstimates == "true" {
+		room.Revealed = false
+		room.Estimates = make(map[string]string)
 	}
 
 	newOptions := r.FormValue("options")
