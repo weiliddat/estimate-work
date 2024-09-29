@@ -28,68 +28,72 @@
     </section>
   {{ else }}
     <section>
-      <details>
+      <details id="room-controls-open">
         <summary>Manage room</summary>
-        <form
-          action="/room/{{ .Room.Id }}"
-          method="post"
-          hx-post="/room/{{ .Room.Id }}"
-          hx-swap="none"
-          hx-sync="#updater:replace"
-        >
-          <label>
-            Your name
-            <fieldset role="group">
-              <input type="text" name="user-name" value="{{ .User.Name }}" />
-              <input type="submit" value="Submit" />
-            </fieldset>
-          </label>
-
-          {{ if eq .Room.HostId .User.Id }}
+        {{ block "room-controls" . }}
+          <form
+            id="room-controls"
+            action="/room/{{ .Room.Id }}"
+            method="post"
+            hx-post="/room/{{ .Room.Id }}"
+            hx-swap="none"
+            hx-sync="#updater:replace"
+            hx-swap-oob="true"
+          >
             <label>
-              Room name
+              Your name
               <fieldset role="group">
-                <input type="text" name="name" value="{{ .Room.Name }}" />
+                <input type="text" name="user-name" value="{{ .User.Name }}" />
                 <input type="submit" value="Submit" />
               </fieldset>
             </label>
 
-            <label>
-              Current topic
-              <fieldset role="group">
-                <input type="text" name="topic" value="{{ .Room.Topic }}" />
-                <input type="submit" value="Submit" />
-              </fieldset>
-            </label>
+            {{ if eq .Room.HostId .User.Id }}
+              <label>
+                Room name
+                <fieldset role="group">
+                  <input type="text" name="name" value="{{ .Room.Name }}" />
+                  <input type="submit" value="Submit" />
+                </fieldset>
+              </label>
 
-            <label>
-              Estimation options
-              <fieldset role="group">
-                <input
-                  type="text"
-                  name="options"
-                  value="{{ join .Room.Options "," }}"
-                />
-                <input type="submit" value="Submit" />
-              </fieldset>
-            </label>
+              <label>
+                Current topic
+                <fieldset role="group">
+                  <input type="text" name="topic" value="{{ .Room.Topic }}" />
+                  <input type="submit" value="Submit" />
+                </fieldset>
+              </label>
 
-            <button
-              type="submit"
-              name="kick"
-              value="true"
-              class="outline secondary"
-            >
-              Kick all users
-            </button>
-          {{ end }}
-        </form>
+              <label>
+                Estimation options
+                <fieldset role="group">
+                  <input
+                    type="text"
+                    name="options"
+                    value="{{ join .Room.Options "," }}"
+                  />
+                  <input type="submit" value="Submit" />
+                </fieldset>
+              </label>
+
+              <button
+                type="submit"
+                name="kick"
+                value="true"
+                class="outline secondary"
+              >
+                Kick all users
+              </button>
+            {{ end }}
+          </form>
+        {{ end }}
       </details>
     </section>
 
     {{ block "topic" . }}
-      <section id="topic" hx-swap-oob="true">
-        <hgroup>
+      <section>
+        <hgroup id="topic" hx-swap-oob="true">
           <h3>Topic: {{ .Room.Topic }}</h3>
           {{ if .Room.Revealed }}
             <p>Estimates are revealed 🐵</p>
