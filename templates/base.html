@@ -44,6 +44,18 @@
           >
         </small>
       </footer>
+
+      <script>
+        document.body.addEventListener("htmx:configRequest", function (e) {
+          const machineId = document.cookie
+            .split("; ")
+            .find((row) => row.startsWith("machineId="))
+            ?.split("=")[1];
+          if (machineId) {
+            e.detail.headers["fly-force-instance-id"] = machineId;
+          }
+        });
+      </script>
     </body>
   </html>
 {{ end }}

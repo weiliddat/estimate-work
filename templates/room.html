@@ -16,7 +16,7 @@
 
   {{ if not .User }}
     <section>
-      <form action="/room/{{ .Room.Id }}" method="post">
+      <form action="/room/{{ .Room.MachineId }}/{{ .Room.Id }}" method="post">
         <label>
           Your name
           <fieldset role="group">
@@ -31,9 +31,9 @@
       <details>
         <summary>Manage room</summary>
         <form
-          action="/room/{{ .Room.Id }}"
+          action="/room/{{ .Room.MachineId }}/{{ .Room.Id }}"
           method="post"
-          hx-post="/room/{{ .Room.Id }}"
+          hx-post="/room/{{ .Room.MachineId }}/{{ .Room.Id }}"
           hx-swap="none"
           hx-sync="#updater:replace"
         >
@@ -103,9 +103,9 @@
     {{ block "options" . }}
       <section id="options" hx-swap-oob="true">
         <form
-          action="/room/{{ .Room.Id }}"
+          action="/room/{{ .Room.MachineId }}/{{ .Room.Id }}"
           method="post"
-          hx-post="/room/{{ .Room.Id }}"
+          hx-post="/room/{{ .Room.MachineId }}/{{ .Room.Id }}"
           hx-swap="none"
           hx-sync="#updater:replace"
           class="grid"
@@ -124,9 +124,9 @@
 
         {{ if eq .Room.HostId .User.Id }}
           <form
-            action="/room/{{ .Room.Id }}"
+            action="/room/{{ .Room.MachineId }}/{{ .Room.Id }}"
             method="post"
-            hx-post="/room/{{ .Room.Id }}"
+            hx-post="/room/{{ .Room.MachineId }}/{{ .Room.Id }}"
             hx-swap="none"
             hx-sync="#updater:replace"
           >
@@ -181,7 +181,7 @@
 
     <div
       id="updater"
-      hx-get="/room/{{ .Room.Id }}/update"
+      hx-get="/room/{{ .Room.MachineId }}/{{ .Room.Id }}/update"
       hx-trigger="every 1s"
       hx-swap="none"
       hx-sync="this:abort"
