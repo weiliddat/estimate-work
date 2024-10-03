@@ -26,6 +26,7 @@ var (
 	roomTmpl     = template.Must(template.New("room").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/room.html"))
 	notFoundTmpl = template.Must(template.New("notFound").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/not_found.html"))
 	rooms        = make(map[string]*Room)
+	machineId    string
 )
 
 type User struct {
@@ -48,6 +49,7 @@ type Room struct {
 	UpdatedAt time.Time
 	mu        sync.Mutex
 	subs      [](chan bool)
+	MachineId string
 }
 
 func (r *Room) GetUser(id string) *User {
@@ -76,6 +78,7 @@ func NewRoom() *Room {
 		UpdatedAt: time.Now(),
 		Options:   []string{"🤷", "0", "1", "2", "3", "5", "8", "13", "21", "🤯"},
 		Estimates: make(map[string]string),
+		MachineId: machineId,
 	}
 	rooms[room.Id] = &room
 	return &room
@@ -134,6 +137,8 @@ func getRoomHandler(w http.ResponseWriter, r *http.Request) {
 		notFoundHandler(w, r)
 		return
 	}
+
+	setMachineId(w, machineId)
 
 	err := roomTmpl.ExecuteTemplate(
 		w,
@@ -226,7 +231,7 @@ func createRoomHandler(w http.ResponseWriter, r *http.Request) {
 	room := NewRoom()
 	rooms[room.Id] = room
 
-	http.Redirect(w, r, fmt.Sprintf("/room/%s", room.Id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/room/%s/%s", machineId, room.Id), http.StatusSeeOther)
 }
 
 func updateRoomHandler(w http.ResponseWriter, r *http.Request) {
@@ -268,6 +273,7 @@ func updateRoomHandler(w http.ResponseWriter, r *http.Request) {
 				room.HostId = user.Id
 			}
 
+			setMachineId(w, room.MachineId)
 			http.SetCookie(w, &http.Cookie{
 				Name:  "room",
 				Value: room.Id,
@@ -335,15 +341,16 @@ func updateRoomHandler(w http.ResponseWriter, r *http.Request) {
 
 	hxRequest := r.Header.Get("hx-request") == "true"
 	if hxRequest {
-		http.Redirect(w, r, fmt.Sprintf("/room/%s/update", room.Id), http.StatusSeeOther)
+		http.Redirect(w, r, fmt.Sprintf("/room/%s/%s/update", machineId, room.Id), http.StatusSeeOther)
 	} else {
-		http.Redirect(w, r, fmt.Sprintf("/room/%s", room.Id), http.StatusSeeOther)
+		http.Redirect(w, r, fmt.Sprintf("/room/%s/%s", machineId, room.Id), http.StatusSeeOther)
 	}
 }
 
 func notFoundHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("hx-refresh", "true")
 	w.WriteHeader(http.StatusNotFound)
+	unsetMachineId(w)
 	err := notFoundTmpl.ExecuteTemplate(w, "base", nil)
 	if err != nil {
 		internalErrorHandler(w, r, err)
@@ -370,6 +377,9 @@ func readFromDataFile() {
 		err = dataDecoder.Decode(&rooms)
 		if err != nil {
 			log.Fatal("Failed to serialize from file: ", err)
+		}
+		for _, room := range rooms {
+			room.MachineId = machineId
 		}
 		log.Printf("Restored from data file %v rooms", len(rooms))
 	}
@@ -407,8 +417,28 @@ func cleanupOldRooms() {
 	}
 }
 
+func setMachineId(w http.ResponseWriter, machineId string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:  "machineId",
+		Value: machineId,
+		Path:  "/",
+	})
+}
+
+func unsetMachineId(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:  "machineId",
+		Value: "",
+		Path:  "/",
+	})
+}
+
 func main() {
 	listenAddr := os.Getenv("LISTEN")
+	machineId = os.Getenv("FLY_MACHINE_ID")
+	if machineId == "" || listenAddr == "" {
+		log.Fatal("Missing environment variables")
+	}
 
 	gob.Register(Room{})
 	readFromDataFile()
@@ -424,12 +454,11 @@ func main() {
 	http.HandleFunc("GET /{$}", indexHandler)
 	http.HandleFunc("GET /", notFoundHandler)
 
-	http.HandleFunc("GET /room/{room}", getRoomHandler)
-	http.HandleFunc("GET /room/{room}/update", getRoomUpdateHandler)
-
 	http.HandleFunc("POST /room", createRoomHandler)
-	http.HandleFunc("POST /room/{room}", updateRoomHandler)
+	http.HandleFunc("GET /room/{machine}/{room}", getRoomHandler)
+	http.HandleFunc("POST /room/{machine}/{room}", updateRoomHandler)
+	http.HandleFunc("GET /room/{machine}/{room}/update", getRoomUpdateHandler)
 
-	log.Println("Server is starting on", listenAddr)
+	log.Println("Server is listening to", listenAddr, "on", machineId)
 	log.Fatal(http.ListenAndServe(listenAddr, nil))
 }

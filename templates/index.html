@@ -9,7 +9,7 @@
   <section>
     {{ if and .Room }}
       <a
-        href="/room/{{ .Room.Id }}"
+        href="/room/{{ .Room.MachineId }}/{{ .Room.Id }}"
         hx-boost="true"
         role="button"
         style="display: block;"
