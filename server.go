@@ -29,14 +29,21 @@ var (
 	machineId    string
 )
 
+type RenderContext struct {
+	User      *User
+	Room      *Room
+	MachineId string
+}
+
 type User struct {
 	Id   string
 	Name string
 }
 
 type Room struct {
-	Id   string
-	Name string
+	MachineId string
+	Id        string
+	Name      string
 
 	HostId string
 	Users  []*User
@@ -49,7 +56,6 @@ type Room struct {
 	UpdatedAt time.Time
 	mu        sync.Mutex
 	subs      [](chan bool)
-	MachineId string
 }
 
 func (r *Room) GetUser(id string) *User {
@@ -90,13 +96,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	err := indexTmpl.ExecuteTemplate(
 		w,
 		"base",
-		struct {
-			User *User
-			Room *Room
-		}{
-			User: user,
-			Room: room,
-		},
+		RenderContext{user, room, machineId},
 	)
 	if err != nil {
 		internalErrorHandler(w, r, err)
@@ -153,13 +153,7 @@ func getRoomHandler(w http.ResponseWriter, r *http.Request) {
 	err := roomTmpl.ExecuteTemplate(
 		w,
 		"base",
-		struct {
-			User *User
-			Room *Room
-		}{
-			User: user,
-			Room: room,
-		},
+		RenderContext{user, room, machineId},
 	)
 	if err != nil {
 		internalErrorHandler(w, r, err)
@@ -224,13 +218,7 @@ func getRoomUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	err = roomTmpl.ExecuteTemplate(
 		w,
 		templateName,
-		struct {
-			User *User
-			Room *Room
-		}{
-			User: user,
-			Room: room,
-		},
+		RenderContext{user, room, machineId},
 	)
 	if err != nil {
 		internalErrorHandler(w, r, err)
@@ -361,7 +349,7 @@ func notFoundHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("hx-refresh", "true")
 	w.WriteHeader(http.StatusNotFound)
 	unsetMachineId(w)
-	err := notFoundTmpl.ExecuteTemplate(w, "base", nil)
+	err := notFoundTmpl.ExecuteTemplate(w, "base", RenderContext{nil, nil, machineId})
 	if err != nil {
 		internalErrorHandler(w, r, err)
 	}
@@ -374,8 +362,7 @@ func internalErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
 	io.WriteString(w, "Internal Server Error")
 }
 
-func readFromDataFile() {
-	dataFilePath := os.Getenv("DATA_FILE_PATH")
+func readFromDataFile(dataFilePath string) {
 	dataFile, err := os.ReadFile(dataFilePath)
 	if os.IsNotExist(err) {
 		log.Println("Data file does not exist, OK")
@@ -395,11 +382,10 @@ func readFromDataFile() {
 	}
 }
 
-func writeToDataFile() {
+func writeToDataFile(dataFilePath string) {
 	for _, r := range rooms {
 		r.mu.Lock()
 	}
-	dataFilePath := os.Getenv("DATA_FILE_PATH")
 	dataFile, err := os.Create(dataFilePath)
 	if err != nil {
 		log.Fatal("Failed to create file: ", err)
@@ -446,21 +432,35 @@ func unsetMachineId(w http.ResponseWriter) {
 func main() {
 	listenAddr := os.Getenv("LISTEN")
 	machineId = os.Getenv("FLY_MACHINE_ID")
+	dataFilePath := os.Getenv("DATA_FILE_PATH")
+
+	// Env validation
 	if machineId == "" || listenAddr == "" {
 		log.Fatal("Missing environment variables")
 	}
+	if dataFilePath == "" {
+		log.Println("No DATA_FILE_PATH provided, rooms are only stored in memory")
+	}
 
-	gob.Register(Room{})
-	readFromDataFile()
+	// Restore rooms if a data file is provided
+	if dataFilePath != "" {
+		gob.Register(Room{})
+		readFromDataFile(dataFilePath)
+	}
+
+	// Periodic cleanup and dump
 	writeInterval := time.NewTicker(1 * time.Second)
 	go func() {
 		for {
 			<-writeInterval.C
 			cleanupOldRooms()
-			writeToDataFile()
+			if dataFilePath != "" {
+				writeToDataFile(dataFilePath)
+			}
 		}
 	}()
 
+	// HTTP handlers
 	http.HandleFunc("GET /{$}", indexHandler)
 	http.HandleFunc("GET /", notFoundHandler)
 
