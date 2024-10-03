@@ -131,6 +131,16 @@ func getReqRoomUser(r *http.Request) (*Room, *User) {
 }
 
 func getRoomHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println(machineId, "received request for", r.URL)
+
+	urlMachineId := r.PathValue("machine")
+	if urlMachineId != machineId {
+		w.Header().Add("fly-replay", fmt.Sprintf("instance=%s", urlMachineId))
+		log.Println(machineId, "added header to redirect to", urlMachineId)
+		notFoundHandler(w, r)
+		return
+	}
+
 	room, user := getReqRoomUser(r)
 
 	if room == nil {
