@@ -31,18 +31,27 @@
 
       <footer class="container-fluid" style="flex-shrink: 0;">
         <hr />
-        <small style="opacity: 0.5;">
-          Made by
-          <a href="https://chiawei.ong" class="secondary" target="_blank"
-            >Chiawei</a
-          >
-          <a
-            href="https://github.com/weiliddat/estimate-work"
-            class="secondary"
-            target="_blank"
-            >Source</a
-          >
-        </small>
+        <div
+          style="display: flex; justify-content: space-between; opacity: 0.5;"
+        >
+          <small>
+            Made by
+            <a href="https://github.com/weiliddat" class="secondary" target="_blank"
+              >Chiawei</a
+            >
+            <a
+              href="https://github.com/weiliddat/estimate-work"
+              class="secondary"
+              target="_blank"
+              >Source</a
+            >
+          </small>
+          <small>
+            {{ if .MachineId }}
+              {{ .MachineId }}
+            {{ end }}
+          </small>
+        </div>
       </footer>
 
       <script>
