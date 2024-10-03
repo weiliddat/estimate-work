@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -29,6 +28,7 @@ var (
 
 	rooms       = make(map[string]*Room)
 	redisClient *redis.Client
+	machineId   string
 )
 
 type User struct {
@@ -51,6 +51,8 @@ type Room struct {
 	mu        sync.Mutex    `json:"-"`
 	UpdatedAt time.Time     `json:"updatedAt"`
 	Subs      [](chan bool) `json:"-"`
+
+	MachineId string `json:"-"`
 }
 
 func (r *Room) GetUser(id string) *User {
@@ -79,6 +81,7 @@ func NewRoom() *Room {
 		UpdatedAt: time.Now(),
 		Options:   []string{"🤷", "0", "1", "2", "3", "5", "8", "13", "21", "🤯"},
 		Estimates: make(map[string]string),
+		MachineId: machineId,
 	}
 	rooms[room.Id] = &room
 	return &room
@@ -116,7 +119,33 @@ func getReqRoomUser(r *http.Request) (*Room, *User) {
 
 	room, exists := rooms[roomId]
 	if !exists {
-		return nil, nil
+		fromRedisSerialized, err := redisClient.Get(r.Context(), fmt.Sprintf("room:%s", roomId)).Bytes()
+		if err != nil {
+			if err != redis.Nil {
+				log.Printf("Error getting room from redis, err %s", err)
+			}
+			return nil, nil
+		}
+
+		var roomFromRedis Room
+		err = json.Unmarshal(fromRedisSerialized, &roomFromRedis)
+		if err != nil {
+			log.Printf("Error unmarshalling room from redis, value %s err %s",
+				string(fromRedisSerialized),
+				err,
+			)
+			return nil, nil
+		}
+
+		rooms[roomFromRedis.Id] = &roomFromRedis
+		room = &roomFromRedis
+		log.Printf("Serialized room %s from redis", roomFromRedis.Id)
+
+		machineIdLease, err := redisClient.SetArgs(r.Context(), fmt.Sprintf("room:%s:machineId", roomId), machineId, redis.SetArgs{
+			TTL: 
+			Get:  true,
+			Mode: "NX",
+		}).Result()
 	}
 
 	userCookie, err := r.Cookie("user")
@@ -379,28 +408,16 @@ func internalErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
 func main() {
 	listenAddr := os.Getenv("LISTEN")
 	redisUrl := os.Getenv("REDIS_URL")
+	machineId = os.Getenv("FLY_MACHINE_ID")
+	if listenAddr == "" || redisUrl == "" || machineId == "" {
+		log.Fatal("Missing required environment variables")
+	}
 
 	redisOpt, err := redis.ParseURL(redisUrl)
 	if err != nil {
 		log.Fatal(err)
 	}
 	redisClient = redis.NewClient(redisOpt)
-
-	ctx := context.Background()
-	roomKeys := redisClient.Scan(ctx, 0, "room:*", 0).Iterator()
-	for roomKeys.Next(ctx) {
-		roomKey := roomKeys.Val()
-		var room Room
-		serialized, err := redisClient.Get(ctx, roomKey).Bytes()
-		if err != nil {
-			log.Fatal(err)
-		}
-		err = json.Unmarshal(serialized, &room)
-		if err != nil {
-			log.Fatal(err)
-		}
-		rooms[room.Id] = &room
-	}
 
 	http.HandleFunc("GET /{$}", indexHandler)
 	http.HandleFunc("GET /", notFoundHandler)
@@ -411,6 +428,6 @@ func main() {
 	http.HandleFunc("POST /room", createRoomHandler)
 	http.HandleFunc("POST /room/{room}", updateRoomHandler)
 
-	log.Println("Server is starting on", listenAddr)
+	log.Println("Server is listening to", listenAddr, "on", machineId)
 	log.Fatal(http.ListenAndServe(listenAddr, nil))
 }

@@ -31,19 +31,37 @@
 
       <footer class="container-fluid" style="flex-shrink: 0;">
         <hr />
-        <small style="opacity: 0.5;">
-          Made by
-          <a href="https://chiawei.ong" class="secondary" target="_blank"
-            >Chiawei</a
-          >
-          <a
-            href="https://github.com/weiliddat/estimate-work"
-            class="secondary"
-            target="_blank"
-            >Source</a
-          >
-        </small>
+        <div
+          style="opacity: 0.5; display: flex; width: 100%; justify-content: space-between;"
+        >
+          <small>
+            Made by
+            <a href="https://chiawei.ong" class="secondary" target="_blank"
+              >Chiawei</a
+            >
+            <a
+              href="https://github.com/weiliddat/estimate-work"
+              class="secondary"
+              target="_blank"
+              >Source</a
+            >
+          </small>
+          <small>
+            {{ if .Room }}
+              {{ .Room.MachineId }}
+            {{ end }}
+          </small>
+        </div>
       </footer>
+
+      {{ if .Room }}
+        <script>
+          const machineId = "{{ .Room.MachineId }}"
+          document.body.addEventListener("htmx:configRequest", function (e) {
+            e.detail.headers["fly-force-instance-id"] = machineId;
+          });
+        </script>
+      {{ end }}
     </body>
   </html>
 {{ end }}
