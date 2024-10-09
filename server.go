@@ -27,6 +27,7 @@ var (
 	notFoundTmpl = template.Must(template.New("notFound").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/not_found.html"))
 	rooms        = make(map[string]*Room)
 	machineId    string
+	persistTime  = 10 * 24 * time.Hour
 )
 
 type RenderContext struct {
@@ -149,6 +150,7 @@ func getRoomHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setMachineId(w, machineId)
+	setRoomAndUserId(w, room, user)
 
 	err := roomTmpl.ExecuteTemplate(
 		w,
@@ -272,16 +274,7 @@ func updateRoomHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			setMachineId(w, room.MachineId)
-			http.SetCookie(w, &http.Cookie{
-				Name:  "room",
-				Value: room.Id,
-				Path:  "/",
-			})
-			http.SetCookie(w, &http.Cookie{
-				Name:  "user",
-				Value: user.Id,
-				Path:  "/",
-			})
+			setRoomAndUserId(w, room, user)
 		}
 	}
 
@@ -401,7 +394,7 @@ func writeToDataFile(dataFilePath string) {
 }
 
 func cleanupOldRooms() {
-	tenDaysAgo := time.Now().Add(-10 * 24 * time.Hour)
+	tenDaysAgo := time.Now().Add(-persistTime)
 	for _, r := range rooms {
 		r.mu.Lock()
 		if r.UpdatedAt.Before(tenDaysAgo) {
@@ -410,6 +403,26 @@ func cleanupOldRooms() {
 		} else {
 			r.mu.Unlock()
 		}
+	}
+}
+
+func setRoomAndUserId(w http.ResponseWriter, room *Room, user *User) {
+	if room != nil {
+		http.SetCookie(w, &http.Cookie{
+			Name:   "room",
+			Value:  room.Id,
+			Path:   "/",
+			MaxAge: int(persistTime.Seconds()),
+		})
+	}
+
+	if user != nil {
+		http.SetCookie(w, &http.Cookie{
+			Name:   "user",
+			Value:  user.Id,
+			Path:   "/",
+			MaxAge: int(persistTime.Seconds()),
+		})
 	}
 }
 
