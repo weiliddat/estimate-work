@@ -29,7 +29,7 @@
   {{ else }}
     <section>
       <details>
-        <summary>Manage room</summary>
+        <summary role="button" class="outline secondary">Manage room</summary>
         <form
           action="/room/{{ .Room.MachineId }}/{{ .Room.Id }}"
           method="post"
@@ -78,7 +78,8 @@
               type="submit"
               name="kick"
               value="true"
-              class="outline secondary"
+              class="outline"
+              style="color: #AF291D; border-color: currentColor;"
             >
               Kick all users
             </button>
