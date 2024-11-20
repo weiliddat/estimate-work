@@ -200,7 +200,6 @@ func getRoomUpdateHandler(w http.ResponseWriter, r *http.Request) {
 			func(s chan bool) bool { return s == roomUpdates },
 		)
 		room.mu.Unlock()
-		close(roomUpdates)
 	}
 
 	w.Header().Add("Last-Modified", room.UpdatedAt.Format(time.RFC1123))
@@ -253,7 +252,6 @@ func updateRoomHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	room.mu.Lock()
-	defer room.mu.Unlock()
 
 	newUserName := r.FormValue("user-name")
 	if newUserName != "" {
@@ -336,6 +334,8 @@ func updateRoomHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	room.UpdatedAt = time.Now()
+	room.mu.Unlock()
+
 	for _, sub := range room.subs {
 		sub <- true
 	}
