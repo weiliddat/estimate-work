@@ -101,16 +101,17 @@
       </section>
     {{ end }}
 
-    {{ block "options" . }}
-      <section id="options" hx-swap-oob="true">
-        <form
-          action="/room/{{ .Room.MachineId }}/{{ .Room.Id }}"
-          method="post"
-          hx-post="/room/{{ .Room.MachineId }}/{{ .Room.Id }}"
-          hx-swap="none"
-          hx-sync="#updater:replace"
-          class="grid"
-        >
+
+    <section id="options" hx-swap-oob="true">
+      <form
+        action="/room/{{ .Room.MachineId }}/{{ .Room.Id }}"
+        method="post"
+        hx-post="/room/{{ .Room.MachineId }}/{{ .Room.Id }}"
+        hx-swap="none"
+        hx-sync="#updater:replace"
+        class="grid"
+      >
+        {{ block "options" . }}
           {{ range .Room.Options }}
             <input
               type="submit"
@@ -119,10 +120,14 @@
               class="{{ if ne . (index $.Room.Estimates $.User.Id) }}
                 outline
               {{ end }}"
+              hx-swap-oob="true"
+              id="estimate-option-{{ . }}"
             />
           {{ end }}
-        </form>
+        {{ end }}
+      </form>
 
+      {{ block "show-hide-estimates" . }}
         {{ if eq .Room.HostId .User.Id }}
           <form
             action="/room/{{ .Room.MachineId }}/{{ .Room.Id }}"
@@ -130,6 +135,8 @@
             hx-post="/room/{{ .Room.MachineId }}/{{ .Room.Id }}"
             hx-swap="none"
             hx-sync="#updater:replace"
+            hx-swap-oob="true"
+            id="show-hide-estimates"
           >
             {{ if not .Room.Revealed }}
               <button type="submit" name="show-estimates" value="true">
@@ -147,8 +154,8 @@
             {{ end }}
           </form>
         {{ end }}
-      </section>
-    {{ end }}
+      {{ end }}
+    </section>
 
     {{ block "participants" . }}
       <section id="participants" hx-swap-oob="true">
@@ -195,4 +202,5 @@
   {{ template "participants" . }}
   {{ template "topic" . }}
   {{ template "options" . }}
+  {{ template "show-hide-estimates" . }}
 {{ end }}
