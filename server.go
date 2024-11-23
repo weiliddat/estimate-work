@@ -181,7 +181,7 @@ func getRoomUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	ifModifiedSince := r.Header.Get("If-Modified-Since")
 	ifModifiedSinceTime, err := time.Parse(time.RFC1123, ifModifiedSince)
 	if err == nil && !room.UpdatedAt.Truncate(time.Second).After(ifModifiedSinceTime) {
-		roomUpdates := make(chan bool)
+		roomUpdates := make(chan bool, 1)
 
 		room.mu.Lock()
 		room.subs = append(room.subs, roomUpdates)
@@ -334,11 +334,12 @@ func updateRoomHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	room.UpdatedAt = time.Now()
-	room.mu.Unlock()
 
 	for _, sub := range room.subs {
 		sub <- true
 	}
+
+	room.mu.Unlock()
 
 	hxRequest := r.Header.Get("hx-request") == "true"
 	if hxRequest {
