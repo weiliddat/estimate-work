@@ -21,7 +21,7 @@ import (
 var (
 	//go:embed templates/*.html
 	templatesFs  embed.FS
-	funcs        = template.FuncMap{"join": strings.Join}
+	funcs        = template.FuncMap{"join": strings.Join, "slugify": slugify}
 	indexTmpl    = template.Must(template.New("index").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/index.html"))
 	roomTmpl     = template.Must(template.New("room").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/room.html"))
 	notFoundTmpl = template.Must(template.New("notFound").Funcs(funcs).ParseFS(templatesFs, "templates/base.html", "templates/not_found.html"))
@@ -451,6 +451,10 @@ func unsetMachineId(w http.ResponseWriter) {
 		Value: "",
 		Path:  "/",
 	})
+}
+
+func slugify(s string) string {
+	return strings.ReplaceAll(strings.ToLower(s), " ", "-")
 }
 
 func main() {

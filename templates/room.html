@@ -121,7 +121,7 @@
                 outline
               {{ end }}"
               hx-swap-oob="true"
-              id="estimate-option-{{ . }}"
+              id="estimate-option-{{ . | slugify }}"
             />
           {{ end }}
         {{ end }}
